@@ -1,0 +1,54 @@
+services:
+
+  # ── Content Requestor app ───────────────────────────────────────────────
+  app:
+    image: content-requestor:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Read from the .env file on the host — never baked into the image
+      - TMDB_READ_TOKEN=${TMDB_READ_TOKEN}
+    volumes:
+      # Persist the SQLite database across container restarts/updates
+      - ./data:/app/data
+    ports:
+      # Bind to localhost only — Cloudflared reaches it on the host network.
+      # Do NOT change 127.0.0.1 to 0.0.0.0 unless you have another firewall
+      # in front; doing so would expose the app to your entire LAN.
+      - "127.0.0.1:3000:3000"
+    # Drop all Linux capabilities — the app needs none of them
+    cap_drop:
+      - ALL
+    # Read-only root filesystem; only the data volume is writable
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+
+  # ── Cloudflare Tunnel sidecar ───────────────────────────────────────────
+  # Provides a secure public HTTPS URL without opening any inbound ports.
+  # The tunnel token is obtained from: https://one.dash.cloudflare.com/
+  # → Networks → Tunnels → Create a tunnel → Docker
+  #
+  # If you are NOT using Cloudflare Tunnels, remove this service and instead
+  # expose the app via your existing reverse proxy (Nginx Proxy Manager,
+  # Traefik, Caddy, etc.) listening on localhost:3000.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # cloudflared does not need to reach the app container by name;
+    # the tunnel is configured in the Cloudflare dashboard to point at
+    # http://localhost:3000 via the host network, OR you can configure it
+    # to use http://app:3000 within this compose network.
+    depends_on:
+      - app
