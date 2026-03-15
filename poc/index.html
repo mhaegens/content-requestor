@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Requestr — Search &amp; Request Media</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app-header"></div>
+  <div id="app-modal"></div>
+
+  <main class="main">
+    <div class="container">
+
+      <!-- Hero Search -->
+      <section class="hero">
+        <div class="hero-eyebrow">🎬 Jellyfin Content Requests</div>
+        <h1>Find something to watch</h1>
+        <p class="hero-sub">Search for movies or TV series and request them to be added to Jellyfin.</p>
+        <div class="search-bar">
+          <div class="search-wrap">
+            <span class="search-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+            </span>
+            <input
+              class="search-input"
+              id="searchInput"
+              type="text"
+              placeholder="Title or TMDB ID… e.g. Breaking Bad or 1396"
+              autocomplete="off"
+              autofocus
+            />
+          </div>
+          <button class="search-btn" id="searchBtn">Search</button>
+        </div>
+        <!-- Type filter -->
+        <div class="filter-row" style="justify-content:center;">
+          <span class="filter-label">Type:</span>
+          <button class="pill active" data-filter="all">All</button>
+          <button class="pill" data-filter="movie">Movies</button>
+          <button class="pill" data-filter="tv">TV Series</button>
+        </div>
+      </section>
+
+      <!-- Results -->
+      <section id="resultsSection" style="display:none;">
+        <div class="section-header">
+          <div class="section-title">
+            <h2>Results</h2>
+            <span class="count-chip" id="resultsCount">0</span>
+          </div>
+          <span style="font-size:.82rem; color:var(--text-3)">Powered by TMDB</span>
+        </div>
+        <div class="skeleton-grid" id="skeletonGrid" style="display:none;"></div>
+        <div class="cards-grid" id="cardsGrid"></div>
+        <div id="emptyResults" style="display:none;">
+          <div class="empty-state">
+            <div class="empty-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+            </div>
+            <h3>No results found</h3>
+            <p>Try a different title or TMDB ID.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Initial / idle state -->
+      <div id="idleState">
+        <div class="empty-state" style="padding:4rem 2rem 5rem;">
+          <div class="empty-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.25" style="width:64px;height:64px;opacity:.25;">
+              <rect x="2" y="2" width="20" height="20" rx="2.18"/>
+              <line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/>
+              <line x1="2" y1="12" x2="22" y2="12"/>
+              <line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/>
+              <line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>
+            </svg>
+          </div>
+          <h3>Start searching above</h3>
+          <p>Type a title or paste a TMDB ID to find movies and TV series.</p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+    // ── Mock TMDB data (simulates API response) ───────────────
+    const MOCK_ALL = [
+      {
+        id: 693134, type: 'movie', title: 'Dune: Part Two', year: '2024', rating: 8.3,
+        overview: 'Paul Atreides unites with Chani and the Fremen while on a path of revenge against the conspirators who destroyed his family.',
+        poster: 'https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg',
+      },
+      {
+        id: 872585, type: 'movie', title: 'Oppenheimer', year: '2023', rating: 8.1,
+        overview: "The story of J. Robert Oppenheimer's role in the development of the atomic bomb during World War II.",
+        poster: 'https://image.tmdb.org/t/p/w500/8Gxv8giaG8l4hGp9z9rEP7IHEca.jpg',
+      },
+      {
+        id: 95396, type: 'tv', title: 'Severance', year: '2022', rating: 8.7,
+        overview: "Mark leads a team of office workers whose memories have been surgically divided between their work and personal lives.",
+        poster: 'https://image.tmdb.org/t/p/w500/ylOkk1z7MRr4f4bGcuAJvEoGEOH.jpg',
+      },
+      {
+        id: 136315, type: 'tv', title: 'The Bear', year: '2022', rating: 8.6,
+        overview: 'A young chef from the fine dining world returns to Chicago to run his family sandwich shop.',
+        poster: 'https://image.tmdb.org/t/p/w500/sHFlbKS3WLqMnp9t2ghADIJFnuQ.jpg',
+      },
+      {
+        id: 792307, type: 'movie', title: 'Poor Things', year: '2023', rating: 8.0,
+        overview: 'The incredible tale about the evolution of Bella Baxter, a young woman brought back to life by an eccentric scientist.',
+        poster: 'https://image.tmdb.org/t/p/w500/kCGlIMHnOm8JPXIRnhNed0FtCga.jpg',
+      },
+      {
+        id: 126308, type: 'tv', title: 'Shōgun', year: '2024', rating: 8.8,
+        overview: "In feudal Japan, the arrival of a European ship threatens to upend a deadly power struggle among warlords.",
+        poster: 'https://image.tmdb.org/t/p/w500/7O4iVfOMQmdCSxhOg1WnzG1AgYT.jpg',
+      },
+      {
+        id: 228222, type: 'tv', title: 'Baby Reindeer', year: '2024', rating: 8.2,
+        overview: "When a struggling comedian shows a little kindness to a vulnerable woman, it sets off a chain of events that will change his life.",
+        poster: 'https://image.tmdb.org/t/p/w500/oU7Oq2IT6CZTgQBGhpAFKXe7cOb.jpg',
+      },
+      {
+        id: 519182, type: 'movie', title: 'Despicable Me 4', year: '2024', rating: 6.8,
+        overview: 'Gru and Lucy and their girls welcome a new member to the family — Gru Jr., who is intent on tormenting his dad.',
+        poster: 'https://image.tmdb.org/t/p/w500/wWba3TkAUCLCRrN5CUiXBTiVNcc.jpg',
+      },
+      {
+        id: 1011985, type: 'movie', title: 'Kung Fu Panda 4', year: '2024', rating: 6.9,
+        overview: 'Po is set to become the spiritual leader of his Valley of Peace, but he must first train a new Dragon Warrior.',
+        poster: 'https://image.tmdb.org/t/p/w500/kDp1vUBnMpe8ak4rjgl3cLELqjU.jpg',
+      },
+      {
+        id: 1396, type: 'tv', title: 'Breaking Bad', year: '2008', rating: 9.5,
+        overview: "A chemistry teacher turned methamphetamine manufacturer partners with a former student in a dangerous drug empire.",
+        poster: 'https://image.tmdb.org/t/p/w500/ggFHVNu6YYI5L9pCfOacjizRGt.jpg',
+      },
+      {
+        id: 1668, type: 'tv', title: 'Friends', year: '1994', rating: 8.4,
+        overview: "Follows the personal and professional lives of six twenty to thirty-something-year-old friends living in Manhattan.",
+        poster: 'https://image.tmdb.org/t/p/w500/f496cm9enuEsZkSPzCwnTESEK5s.jpg',
+      },
+      {
+        id: 533535, type: 'movie', title: 'Deadpool & Wolverine', year: '2024', rating: 7.7,
+        overview: "Deadpool is offered a chance to join the Time Variance Authority, but events take an unexpected turn when he teams up with Wolverine.",
+        poster: 'https://image.tmdb.org/t/p/w500/8cdWjvZQUExUUTzyp4t6EDMubfO.jpg',
+      },
+    ];
+
+    let currentFilter = 'all';
+    let currentResults = [];
+
+    // ── Filter Pills ──────────────────────────────────────────
+    document.querySelectorAll('.pill[data-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.pill[data-filter]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentFilter = btn.dataset.filter;
+        renderResults(currentResults);
+      });
+    });
+
+    // ── Search trigger ────────────────────────────────────────
+    document.getElementById('searchBtn').addEventListener('click', doSearch);
+    document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+
+    function doSearch() {
+      const q = document.getElementById('searchInput').value.trim().toLowerCase();
+      if (!q) return;
+
+      document.getElementById('idleState').style.display = 'none';
+      document.getElementById('resultsSection').style.display = '';
+      document.getElementById('emptyResults').style.display = 'none';
+      document.getElementById('cardsGrid').innerHTML = '';
+
+      // Show skeleton
+      const sg = document.getElementById('skeletonGrid');
+      sg.style.display = '';
+      sg.innerHTML = buildSkeletons(8);
+
+      // Simulate network delay
+      setTimeout(() => {
+        sg.style.display = 'none';
+        // Filter mock data by query
+        const results = MOCK_ALL.filter(item =>
+          String(item.id) === q ||
+          item.title.toLowerCase().includes(q)
+        );
+        currentResults = results;
+        renderResults(results);
+      }, 700);
+    }
+
+    function renderResults(results) {
+      const filtered = currentFilter === 'all' ? results : results.filter(i => i.type === currentFilter);
+      const grid = document.getElementById('cardsGrid');
+      const empty = document.getElementById('emptyResults');
+      const chip = document.getElementById('resultsCount');
+
+      chip.textContent = filtered.length;
+
+      if (!filtered.length) {
+        grid.innerHTML = '';
+        empty.style.display = '';
+        return;
+      }
+      empty.style.display = 'none';
+      grid.innerHTML = filtered.map(item => buildCard(item)).join('');
+    }
+
+    // ── Request handler ───────────────────────────────────────
+    function handleRequest(id) {
+      if (!getName()) { openNameModal(); return; }
+      const item = MOCK_ALL.find(i => i.id === id);
+      if (!item) return;
+
+      const ok = addToWishlist(item, getName());
+      if (!ok) {
+        toast('Already in the wish list!', 'info');
+        return;
+      }
+
+      // Update the button in-place
+      const card = document.querySelector(`.card[data-id="${id}"] .card-action`);
+      if (card) {
+        card.innerHTML = `<button class="btn btn-success btn-full" disabled>${ICONS.check} Already Requested</button>`;
+      }
+      toast(`"${item.title}" added to wish list!`, 'success');
+    }
+
+    // ── Init ──────────────────────────────────────────────────
+    initApp('search');
+  </script>
+</body>
+</html>
