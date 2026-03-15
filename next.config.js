@@ -39,11 +39,12 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
-  // Embed git SHA and build timestamp into the server-rendered env so the
-  // footer can show which exact build is running.
+  // Embed git SHA and build timestamp into the client bundle so the footer
+  // can confirm which exact build is running. NEXT_PUBLIC_ prefix guarantees
+  // the values are inlined at build time in both server and client components.
   env: {
-    BUILD_SHA: buildSha,
-    BUILD_TIME: new Date().toISOString(),
+    NEXT_PUBLIC_BUILD_SHA: buildSha,
+    NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
   },
   // better-sqlite3 is a native Node.js addon (.node file).
   // Without this, Next.js tries to webpack-bundle it, which breaks native

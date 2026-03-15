@@ -21,12 +21,11 @@ export default function RootLayout({
         <footer style={{
           textAlign: 'center',
           padding: '1rem',
-          fontSize: '0.7rem',
-          opacity: 0.35,
-          color: 'var(--text-3)',
+          fontSize: '0.72rem',
+          color: '#6e7681',
           userSelect: 'none',
         }}>
-          build {process.env.BUILD_SHA} &middot; {process.env.BUILD_TIME?.slice(0, 10)}
+          build {process.env.NEXT_PUBLIC_BUILD_SHA} &middot; {process.env.NEXT_PUBLIC_BUILD_TIME?.slice(0, 10)}
         </footer>
       </body>
     </html>
