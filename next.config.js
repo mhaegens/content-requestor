@@ -1,5 +1,12 @@
 /** @type {import('next').NextConfig} */
 
+const { execSync } = require('child_process');
+
+let buildSha = 'dev';
+try {
+  buildSha = execSync('git rev-parse --short HEAD').toString().trim();
+} catch { /* not a git repo or git not available */ }
+
 const isDev = process.env.NODE_ENV === 'development';
 
 const securityHeaders = [
@@ -32,6 +39,12 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  // Embed git SHA and build timestamp into the server-rendered env so the
+  // footer can show which exact build is running.
+  env: {
+    BUILD_SHA: buildSha,
+    BUILD_TIME: new Date().toISOString(),
+  },
   // better-sqlite3 is a native Node.js addon (.node file).
   // Without this, Next.js tries to webpack-bundle it, which breaks native
   // addon path resolution at runtime and causes all DB routes to fail (500).
