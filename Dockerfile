@@ -6,7 +6,7 @@ RUN apk add --no-cache python3 make g++ linux-headers
 
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm install
 
 # ── Stage 2: Build Next.js ───────────────────────────────────────────────────
 FROM node:20-alpine AS builder
