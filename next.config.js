@@ -32,6 +32,12 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  // better-sqlite3 is a native Node.js addon (.node file).
+  // Without this, Next.js tries to webpack-bundle it, which breaks native
+  // addon path resolution at runtime and causes all DB routes to fail (500).
+  experimental: {
+    serverComponentsExternalPackages: ['better-sqlite3'],
+  },
   headers: async () => [
     {
       source: '/(.*)',
