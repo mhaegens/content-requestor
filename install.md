@@ -2,30 +2,34 @@
 
 This guide takes you from **zero** to a fully working Requestr instance at
 `https://requests.haegens.be` — running inside a fresh Debian 12 LXC container
-on your `pve-homelab` Proxmox node, exposed to the internet via a Cloudflare Tunnel
-with no open inbound ports.
+on your `pve-homelab` Proxmox node, exposed via the existing **homelab** Cloudflare
+Tunnel you already use for Home Assistant and Jellyfin.
 
-By the end you will have:
+By the end you will have added one more service to your tunnel:
 
 ```
 pve-homelab
+  ├── cloudflared (systemd) ── homelab tunnel ──► Cloudflare ──► internet
+  │     └── ingress rules:
+  │           ha.haegens.be       → 192.168.0.184:8123   (existing)
+  │           jellyfin.haegens.be → 192.168.0.X:8096     (existing)
+  │           requests.haegens.be → 192.168.0.X:3000     ← new
+  │
   └── CT 180 (requestr) — Debian 12, 1 vCPU, 1 GB RAM, 8 GB disk
-        ├── content-requestor container  (port 3000, localhost-only)
-        └── cloudflared container  ──────► https://requests.haegens.be
+        └── content-requestor container  (port 3000)
 ```
+
+No new tunnel, no new token, no Docker cloudflared sidecar — just an extra
+line in `/etc/cloudflared/config.yml`.
 
 ---
 
 ## What you need before you start
 
 - Access to the Proxmox web UI (`https://<your-proxmox-ip>:8006`)
+- SSH or shell access to `pve-homelab` (for editing the cloudflared config at the end)
 - A free TMDB account: <https://www.themoviedb.org>
-- Your Cloudflare login for `haegens.be`: <https://one.dash.cloudflare.com>
-- A plain text file (Notepad, TextEdit, anything) open on your computer
-  to temporarily hold two tokens as you collect them
-
-You do **not** need to SSH into anything yet. The first two steps are done
-entirely in your web browser.
+- A plain text file open on your computer to hold one token while you collect it
 
 ---
 
@@ -53,56 +57,15 @@ in Requestr. You need a personal API token.
 
 ---
 
-## Step 2 — Create the Cloudflare Tunnel
-
-This creates a secure HTTPS tunnel so the app is reachable from the internet
-without opening any ports on your router or firewall.
-
-1. Log in to the Cloudflare Zero Trust dashboard:
-   <https://one.dash.cloudflare.com>
-
-2. In the left sidebar, click **Networks** → **Tunnels**.
-
-3. Click **"Create a tunnel"**.
-
-4. On the "Select your tunnel type" screen, choose **Cloudflared** → click **Next**.
-
-5. Give the tunnel a name: `requestr` → click **Save tunnel**.
-
-6. On the "Install and run a connector" page:
-   - Click the **Docker** tab.
-   - You will see a `docker run` command. Inside that command is a `--token` flag
-     followed by a long string. Copy **only the token value** (everything after
-     `--token `, up to but not including any trailing space or quote).
-   - It looks like: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
-   - Paste it into your text file and label it:
-     ```
-     Cloudflare tunnel token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-     ```
-
-7. Click **Next** (do not run the docker command shown — Docker is not installed yet).
-
-8. On the "Route tunnel" / "Public Hostname" screen, add a hostname:
-   - **Subdomain:** `requests`
-   - **Domain:** `haegens.be`
-   - **Type:** `HTTP`
-   - **URL:** `localhost:3000`
-   - Click **Save tunnel**.
-
-> Your tunnel now exists in Cloudflare and will activate automatically once
-> the cloudflared Docker container comes online in Step 9.
-
----
-
-## Step 3 — Create the LXC container in Proxmox
+## Step 2 — Create the LXC container in Proxmox
 
 Open the Proxmox web UI at `https://<your-proxmox-ip>:8006` and log in.
 
-### 3a. Open the Create CT wizard
+### 2a. Open the Create CT wizard
 
 Click the blue **"Create CT"** button in the top-right corner of the page.
 
-### 3b. General tab
+### 2b. General tab
 
 | Field | Value |
 |---|---|
@@ -114,7 +77,7 @@ Click the blue **"Create CT"** button in the top-right corner of the page.
 
 Click **Next**.
 
-### 3c. Template tab
+### 2c. Template tab
 
 | Field | Value |
 |---|---|
@@ -126,7 +89,7 @@ Click **Next**.
 
 Click **Next**.
 
-### 3d. Disks tab
+### 2d. Disks tab
 
 | Field | Value |
 |---|---|
@@ -135,7 +98,7 @@ Click **Next**.
 
 Click **Next**.
 
-### 3e. CPU tab
+### 2e. CPU tab
 
 | Field | Value |
 |---|---|
@@ -143,7 +106,7 @@ Click **Next**.
 
 Click **Next**.
 
-### 3f. Memory tab
+### 2f. Memory tab
 
 | Field | Value |
 |---|---|
@@ -152,7 +115,7 @@ Click **Next**.
 
 Click **Next**.
 
-### 3g. Network tab
+### 2g. Network tab
 
 | Field | Value |
 |---|---|
@@ -162,11 +125,11 @@ Click **Next**.
 
 Click **Next**.
 
-### 3h. DNS tab
+### 2h. DNS tab
 
 Leave everything at the defaults. Click **Next**.
 
-### 3i. Confirm tab
+### 2i. Confirm tab
 
 Review the summary.
 
@@ -176,7 +139,7 @@ Review the summary.
 Click **Finish** and wait for the task to complete (the log pane will say
 `TASK OK`).
 
-### 3j. Enable Docker-required features (critical — do this before starting)
+### 2j. Enable Docker-required features (critical — do this before starting)
 
 Docker requires two kernel features to be enabled on the LXC. These are the
 same settings used in CT 140 (`arr`) and your other Docker containers.
@@ -192,18 +155,18 @@ same settings used in CT 140 (`arr`) and your other Docker containers.
 Without these two options, Docker will fail to start inside the container
 with a confusing permission error.
 
-### 3k. Start the container and open a console
+### 2k. Start the container and open a console
 
 1. With CT 180 selected, click the **Start** button (green triangle, top of page).
 2. Click **Console** to open a terminal window into the container.
-3. Log in as `root` using the password you set in step 3b.
+3. Log in as `root` using the password you set in step 2b.
 
-You are now inside the container. All remaining commands in this guide are
-run here (or in an SSH session to this container — whichever you prefer).
+You are now inside the container. All remaining commands through Step 8 are
+run here.
 
 ---
 
-## Step 4 — Initial Debian 12 setup
+## Step 3 — Initial Debian 12 setup
 
 Run these commands one at a time, waiting for each to finish before continuing.
 
@@ -238,7 +201,7 @@ requestr
 
 ---
 
-## Step 5 — Install Docker Engine
+## Step 4 — Install Docker Engine
 
 Debian 12 does not include Docker. We add the official Docker apt repository
 so we get the current, supported version.
@@ -246,7 +209,7 @@ so we get the current, supported version.
 **Copy and paste each block below in order.** Wait for each block to finish
 before running the next one.
 
-### 5a. Remove any old unofficial Docker packages
+### 4a. Remove any old unofficial Docker packages
 
 ```bash
 apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
@@ -254,7 +217,7 @@ apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null || 
 
 This is safe to run even if nothing is installed — errors are suppressed.
 
-### 5b. Add Docker's official GPG signing key
+### 4b. Add Docker's official GPG signing key
 
 ```bash
 install -m 0755 -d /etc/apt/keyrings
@@ -265,7 +228,7 @@ curl -fsSL https://download.docker.com/linux/debian/gpg \
 chmod a+r /etc/apt/keyrings/docker.gpg
 ```
 
-### 5c. Add the Docker stable repository
+### 4c. Add the Docker stable repository
 
 ```bash
 echo \
@@ -275,7 +238,7 @@ echo \
   | tee /etc/apt/sources.list.d/docker.list > /dev/null
 ```
 
-### 5d. Install Docker Engine and the Compose plugin
+### 4d. Install Docker Engine and the Compose plugin
 
 ```bash
 apt-get update
@@ -290,7 +253,7 @@ apt-get install -y \
 
 This downloads and installs Docker. It will take a minute or two.
 
-### 5e. Enable and start Docker
+### 4e. Enable and start Docker
 
 ```bash
 # Start Docker automatically whenever the container boots
@@ -300,7 +263,7 @@ systemctl enable docker
 systemctl start docker
 ```
 
-### 5f. Verify Docker is working
+### 4f. Verify Docker is working
 
 ```bash
 docker run --rm hello-world
@@ -313,17 +276,16 @@ Hello from Docker!
 This message shows that your installation appears to be working correctly.
 ```
 
-If you see this, Docker is installed and working. If you get a permission
-error instead, go back and confirm that **Nesting** and **keyctl** are both
-checked in the LXC Options → Features (step 3j), then reboot the container
-and try again.
+If you see a permission error instead, go back and confirm that **Nesting** and
+**keyctl** are both checked in CT 180 Options → Features (step 2j), then reboot
+the container (`pct reboot 180` from the Proxmox shell) and try again.
 
 ---
 
-## Step 6 — Clone the repository
+## Step 5 — Clone the repository
 
-The app will live in `/opt` — the conventional location for self-hosted
-software on Linux.
+The app will live in `/opt` — the conventional location for self-hosted software
+on Linux.
 
 ```bash
 cd /opt
@@ -346,13 +308,10 @@ cd /opt/content-requestor
 
 ---
 
-## Step 7 — Create the environment file
+## Step 6 — Create the environment file
 
-The app reads two secret values from a `.env` file: your TMDB token (Step 1)
-and your Cloudflare Tunnel token (Step 2). This file lives only on your server
-and is never committed to git.
-
-Copy the example file that ships with the repo:
+The app needs one secret value: your TMDB token from Step 1. Copy the example
+file that ships with the repo:
 
 ```bash
 cp .env.example .env
@@ -370,13 +329,10 @@ The file currently looks like:
 TMDB_READ_TOKEN=YOUR_TMDB_READ_ACCESS_TOKEN_HERE
 ```
 
-Replace its contents with your two tokens. When finished the file should look
-exactly like this (with your real values instead of the placeholders):
+Replace the placeholder with your real token:
 
 ```env
 TMDB_READ_TOKEN=eyJhbGciOiJIUzI1NiJ9...your full TMDB token here...
-
-CLOUDFLARE_TUNNEL_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...your full tunnel token here...
 ```
 
 **How to save and exit nano:**
@@ -390,12 +346,14 @@ Verify the file was saved correctly:
 cat .env
 ```
 
-You should see your tokens printed back. If you see `YOUR_TMDB_...` placeholders
-still there, the file was not saved — run `nano .env` again and repeat.
+You should see your token printed back. If you still see `YOUR_TMDB_...`,
+run `nano .env` again and repeat.
+
+> **Never commit `.env` to git.** It is already listed in `.gitignore`.
 
 ---
 
-## Step 8 — Create the data directory
+## Step 7 — Create the data directory
 
 The app stores all requests in a SQLite database inside a `data/` folder.
 This folder needs to exist before starting:
@@ -404,67 +362,40 @@ This folder needs to exist before starting:
 mkdir -p data
 ```
 
-The database file itself (`data/requests.db`) is created automatically on
-first startup — you do not need to create it.
+The database file (`data/requests.db`) is created automatically on first startup.
 
 ---
 
-## Step 9 — Build and start the app
+## Step 8 — Build and start the app
 
 ```bash
 docker compose up -d --build
 ```
 
 **What this does:**
-
-- `--build` — builds the Docker images from the Dockerfile in the repo
+- `--build` — builds the Docker image from the Dockerfile in the repo
 - `-d` — runs everything in the background (detached mode)
-
-Two containers are started:
-- `app` — the Next.js + SQLite application
-- `cloudflared` — the Cloudflare Tunnel connector
 
 **What happens during the build (it takes a few minutes):**
 
 1. **Stage 1 (deps):** Installs Node.js dependencies and compiles the native
    SQLite C++ addon (`better-sqlite3`). This is the slow part.
-2. **Stage 2 (builder):** Compiles the Next.js app into an optimised
-   production bundle.
-3. **Stage 3 (runner):** Creates a minimal final image containing only what's
-   needed to run the app — no source code, no build tools.
+2. **Stage 2 (builder):** Compiles the Next.js app into an optimised production bundle.
+3. **Stage 3 (runner):** Creates a minimal final image with only what's needed
+   to run the app — no source code, no build tools, no compiler.
 
 > The **first build takes 3–6 minutes** depending on your internet speed and CPU.
 > Every subsequent restart (without `--build`) takes under 5 seconds.
 
 You will see a lot of output. It is done when you get your command prompt back.
 
----
-
-## Step 10 — Verify everything is running
-
-### Check container status
-
-```bash
-docker compose ps
-```
-
-Both services must show `running`:
-
-```
-NAME                                  STATUS
-content-requestor-app-1               running
-content-requestor-cloudflared-1       running
-```
-
-If either shows `exited`, skip to the Troubleshooting section.
-
-### Check the app started correctly
+Check the app started correctly:
 
 ```bash
 docker compose logs app
 ```
 
-Scroll to the bottom. Look for these lines:
+Look for this near the bottom:
 
 ```
 ▲ Next.js 14.x.x
@@ -472,39 +403,156 @@ Scroll to the bottom. Look for these lines:
   ✓ Ready in Xs
 ```
 
-The `✓ Ready` line confirms the app is up and accepting requests.
+The `✓ Ready` line confirms the app is running and listening on port 3000.
 
-### Check the tunnel is connected
+---
+
+## Step 9 — Find CT 180's IP address
+
+The Cloudflare Tunnel config on `pve-homelab` needs to know the IP address of
+this container. Find it now while you are already logged into the console:
 
 ```bash
-docker compose logs cloudflared
+ip addr show eth0 | grep 'inet '
 ```
 
-Look for a line containing:
-
+Example output:
 ```
-Connection established
-```
-
-or
-
-```
-Registered tunnel connection
+    inet 192.168.0.XXX/24 brd 192.168.0.255 scope global dynamic eth0
 ```
 
-This means Cloudflare has an active connection to your container and is
-routing traffic from `requests.haegens.be` to the app.
+The value after `inet` and before the `/24` is the IP address —
+for example `192.168.0.XXX`. **Write this down** — you need it in the next step.
+
+> You can also find it in the Proxmox web UI: click CT 180 in the left panel →
+> the **Summary** tab shows the IP address at the top.
+
+---
+
+## Step 10 — Add Requestr to the homelab Cloudflare Tunnel
+
+These commands are run on **`pve-homelab`**, not inside CT 180.
+
+Open a new terminal and SSH into your Proxmox host (or use the Proxmox web
+shell: top menu → **Shell**):
+
+```bash
+ssh root@<your-proxmox-ip>
+```
+
+### 10a. Edit the tunnel config
+
+```bash
+nano /etc/cloudflared/config.yml
+```
+
+The file currently looks like this (abbreviated):
+
+```yaml
+tunnel: homelab
+credentials-file: /root/.cloudflared/554a9a08-9ec8-4b2e-a4da-ae180790cec5.json
+
+ingress:
+  - hostname: ha.haegens.be
+    service: http://192.168.0.184:8123
+  - hostname: jellyfin.haegens.be
+    service: http://192.168.0.XXX:8096
+  - service: http_status:404
+```
+
+Add a new rule for Requestr **above the `http_status:404` line** — that line
+must always stay last (it is the catch-all for unmatched requests).
+
+Insert this block, replacing `192.168.0.XXX` with the IP you found in Step 9:
+
+```yaml
+  - hostname: requests.haegens.be
+    service: http://192.168.0.XXX:3000
+```
+
+After editing, the ingress section should look like this:
+
+```yaml
+ingress:
+  - hostname: ha.haegens.be
+    service: http://192.168.0.184:8123
+  - hostname: jellyfin.haegens.be
+    service: http://192.168.0.XXX:8096
+  - hostname: requests.haegens.be
+    service: http://192.168.0.XXX:3000
+  - service: http_status:404
+```
+
+Save and exit: `Ctrl + O`, Enter, `Ctrl + X`.
+
+### 10b. Create the DNS CNAME record
+
+This command tells Cloudflare to create a CNAME for `requests.haegens.be`
+pointing to your tunnel endpoint — the same way `ha.haegens.be` and
+`jellyfin.haegens.be` were set up:
+
+```bash
+cloudflared tunnel route dns homelab requests.haegens.be
+```
+
+Expected output:
+```
+Added CNAME requests.haegens.be which will route to this tunnel tunnelID=554a9a08-...
+```
+
+### 10c. Restart cloudflared
+
+```bash
+systemctl restart cloudflared
+```
+
+Confirm it is running and picked up the new config:
+
+```bash
+systemctl status cloudflared
+```
+
+The output should show `active (running)`. If it shows `failed`, the config
+has a YAML syntax error — re-open the file and check indentation (YAML is
+very sensitive to spaces).
+
+For detailed logs:
+
+```bash
+journalctl -u cloudflared -n 30
+```
+
+---
+
+## Step 11 — Verify everything is working
+
+### Check the app is still running (inside CT 180)
+
+```bash
+docker compose -f /opt/content-requestor/docker-compose.yml ps
+```
+
+The `app` service should show `running`.
+
+### Check the tunnel is routing (on pve-homelab)
+
+```bash
+journalctl -u cloudflared -n 10
+```
+
+Look for lines mentioning `requests.haegens.be` or a general
+`Connection established` message with no errors.
 
 ### Open the app in your browser
 
 Navigate to: **<https://requests.haegens.be>**
 
 You should see the Requestr search page. On the first visit you will be
-prompted for your name.
+prompted to enter your name.
 
 ---
 
-## Step 11 — Using Requestr
+## Step 12 — Using Requestr
 
 | URL | Purpose | Who accesses it |
 |---|---|---|
@@ -516,8 +564,8 @@ prompted for your name.
 
 The first time someone opens the app they are asked: **"What's your name?"**
 This name is saved in their browser and attached to every request they submit.
-There are no accounts or passwords. They can change their name at any time by
-clicking their avatar in the top-right corner of the page.
+No accounts, no passwords. They can change their name at any time by clicking
+their avatar in the top-right corner.
 
 ### Submitting a request
 
@@ -529,43 +577,36 @@ clicking their avatar in the top-right corner of the page.
 ### Admin panel (`/masterview`)
 
 This page is intentionally not linked from anywhere — only people who know
-the URL can access it.
+the URL can reach it.
 
-- **Copy ID** button on each row — copies that item's TMDB numeric ID to clipboard.
-- **Copy All IDs** button at the top — copies all pending TMDB IDs as a
-  newline-separated list (paste directly into Jellyfin or your arr stack).
-- **Trash icon** on each row — deletes that single request.
-- **Clear All** button — deletes everything after a confirmation dialog.
+- **Copy ID** — copies that item's TMDB numeric ID to clipboard.
+- **Copy All IDs** — copies all pending TMDB IDs as a newline-separated list
+  (paste directly into Jellyfin or your arr stack).
+- **Trash icon** — deletes a single request.
+- **Clear All** — deletes everything (requires a confirmation click).
 
-Typical workflow: open `/masterview` → Copy All IDs → add media to Jellyfin →
-click Clear All.
+Typical workflow: open `/masterview` → Copy All IDs → add to Jellyfin → Clear All.
 
 ---
 
-## Step 12 — Updating the app
+## Step 13 — Updating the app
 
-When a new version is available:
+When a new version is available, run this inside CT 180:
 
 ```bash
 cd /opt/content-requestor
-
-# Pull the latest code from GitHub
 git pull
-
-# Rebuild images and restart containers
-# The -d flag keeps everything running in the background
 docker compose up -d --build
 ```
 
-Your `data/` directory (containing the SQLite database) is mounted as a
-Docker volume and is completely untouched by updates. No requests are lost.
+Your `data/` directory (containing the SQLite database) is mounted as a Docker
+volume and is never touched by updates. No requests are ever lost.
 
 ---
 
-## Step 13 — Backup
+## Step 14 — Backup
 
-Your entire dataset is a single file: `data/requests.db`. Back it up before
-updates or at any time:
+Your entire dataset is a single file: `data/requests.db`.
 
 ```bash
 # Simple file copy — safe to run while the app is running
@@ -586,17 +627,16 @@ sqlite3 /opt/content-requestor/data/requests.db \
 
 | Concern | How it's handled |
 |---|---|
-| TMDB API token | Stored only in `.env` on the host — **never** sent to the browser |
-| Public exposure | Cloudflare Tunnel provides HTTPS — **no open inbound ports** on your router |
-| LAN exposure | Docker binds to `127.0.0.1:3000` only — not reachable from other LAN devices |
+| TMDB API token | Stored only in `.env` on CT 180 — **never** sent to browsers |
+| Public exposure | Cloudflare Tunnel — **no open inbound ports** on your router |
+| LAN exposure | Port 3000 is reachable on the internal LAN (required for the tunnel); not accessible from the internet without going through Cloudflare |
 | Container privileges | Non-root user (uid 1001), all Linux capabilities dropped, read-only root filesystem |
 | Admin panel (`/masterview`) | Obscure URL — not linked from any public page |
 | XSS / injection | React escaping + Content-Security-Policy headers block external scripts |
 
 > **Optional extra:** Add a Cloudflare Access policy (free tier) on the
-> `/masterview` path so only your email address can reach it even if someone
-> guesses the URL. This is configured in the Cloudflare Zero Trust dashboard
-> under Access → Applications.
+> `/masterview` path so only your email address can reach it. Configure this
+> in the Cloudflare Zero Trust dashboard under **Access → Applications**.
 
 ---
 
@@ -604,61 +644,21 @@ sqlite3 /opt/content-requestor/data/requests.db \
 
 | Symptom | What to check / fix |
 |---|---|
-| Docker fails to start inside the LXC | CT 180 → Options → Features — confirm **Nesting** ✅ and **keyctl** ✅ are both checked; reboot the LXC and try again |
-| `docker: command not found` | Re-run all commands in Step 5 from the beginning |
-| Build fails: `no space left on device` | Run `df -h` — if `/` is full, expand the disk in Proxmox (CT 180 → Resources → Disk size → Resize) |
-| App container exits immediately | Run `docker compose logs app` — the error message will be there |
-| `TMDB_READ_TOKEN is not set` error | Run `cat /opt/content-requestor/.env` — confirm the file exists and the token is present |
-| TMDB search returns no results | The token is wrong or expired — re-copy it from <https://www.themoviedb.org/settings/api> |
-| Tunnel shows `exited` | Run `docker compose logs cloudflared` — if you see `Invalid token`, re-paste `CLOUDFLARE_TUNNEL_TOKEN` in `.env` and run `docker compose restart cloudflared` |
-| `requests.haegens.be` shows a Cloudflare error page | Check <https://one.dash.cloudflare.com> → Networks → Tunnels — the `requestr` tunnel should show **Healthy** |
-| `permission denied` on `data/` | Run `chown -R 1001:1001 /opt/content-requestor/data/` |
-| Port 3000 conflict | Edit `docker-compose.yml`: change `127.0.0.1:3000:3000` to `127.0.0.1:3001:3000`; update the tunnel public hostname URL to `localhost:3001`; run `docker compose up -d` |
+| Docker fails to start inside the LXC | CT 180 → Options → Features — confirm **Nesting** ✅ and **keyctl** ✅ are both checked; reboot with `pct reboot 180` on the Proxmox shell |
+| `docker: command not found` | Re-run all commands in Step 4 from the beginning |
+| Build fails: `no space left on device` | Run `df -h` inside CT 180 — if `/` is full, expand in Proxmox: CT 180 → Resources → Disk → Resize |
+| App container exits immediately | Run `docker compose logs app` inside CT 180 — the error will be there |
+| `TMDB_READ_TOKEN is not set` error | Run `cat /opt/content-requestor/.env` — confirm the token is present |
+| TMDB search returns no results | Token is wrong or expired — re-copy from <https://www.themoviedb.org/settings/api> |
+| `requests.haegens.be` shows a Cloudflare error | Check `systemctl status cloudflared` on `pve-homelab`; check the ingress rule is present and the IP is correct |
+| cloudflared fails to restart | Check for YAML syntax errors in `/etc/cloudflared/config.yml` — indentation must use spaces, not tabs |
+| DNS not resolving | Re-run `cloudflared tunnel route dns homelab requests.haegens.be` on `pve-homelab` |
+| Page loads but shows connection error | The IP in the cloudflared config may be wrong — re-check Step 9 and update `/etc/cloudflared/config.yml` |
+| `permission denied` on `data/` | Run `chown -R 1001:1001 /opt/content-requestor/data/` inside CT 180 |
 
 ---
 
-## Appendix A — Running without Cloudflare Tunnel
-
-If you already run Nginx Proxy Manager, Traefik, or Caddy in CT 150
-(`reverse-proxy`), you can use your existing setup instead of cloudflared:
-
-1. Remove (or comment out) the `cloudflared:` service block from
-   `docker-compose.yml`.
-2. Remove `CLOUDFLARE_TUNNEL_TOKEN` from `.env`.
-3. Change the port binding in `docker-compose.yml` from
-   `127.0.0.1:3000:3000` to `0.0.0.0:3000:3000` so your reverse proxy
-   container can reach it across the Docker bridge.
-4. Point your proxy at `<CT-180-IP>:3000`.
-
-Find CT 180's IP address with:
-
-```bash
-ip addr show eth0 | grep 'inet '
-```
-
-Example Nginx config snippet:
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name requests.haegens.be;
-
-    # ... your SSL certificate config ...
-
-    location / {
-        proxy_pass         http://<CT-180-IP>:3000;
-        proxy_http_version 1.1;
-        proxy_set_header   Upgrade $http_upgrade;
-        proxy_set_header   Connection 'upgrade';
-        proxy_set_header   Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
----
-
-## Appendix B — Local development (no Docker)
+## Appendix — Local development (no Docker)
 
 To run the app on your laptop for development:
 
@@ -670,5 +670,5 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open <http://localhost:3000> in your browser. Changes to source files reload
-automatically. The Cloudflare Tunnel is not used in local development.
+Open <http://localhost:3000> in your browser. File changes reload automatically.
+The Cloudflare Tunnel is not used in local development.
