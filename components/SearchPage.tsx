@@ -64,7 +64,7 @@ export function SearchPage() {
       }
 
       // Optimistic update
-      setRequestedIds((prev) => new Set([...prev, item.tmdb_id]));
+      setRequestedIds((prev) => new Set(prev).add(item.tmdb_id));
 
       try {
         const res = await fetch('/api/requests', {
