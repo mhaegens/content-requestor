@@ -492,6 +492,8 @@ ingress:
   - service: http_status:404
 ```
 
+> **Important:** The last rule (`- service: http_status:404`) must have **no `hostname:` key at all** — not even `hostname:` with an empty value. It is the catch-all that returns 404 for any unmatched hostname. If you accidentally write `hostname:` (empty), cloudflared will reject the config with: `Rule #N is matching the hostname '', but this will match every hostname`.
+
 Save and exit: `Ctrl + O`, Enter, `Ctrl + X`.
 
 ### 10b. Create the DNS CNAME record
@@ -661,6 +663,7 @@ sqlite3 /opt/content-requestor/data/requests.db \
 | TMDB search returns no results | Token is wrong or expired — re-copy from <https://www.themoviedb.org/settings/api> |
 | `requests.haegens.be` shows a Cloudflare error | Check `systemctl status cloudflared` on `pve-homelab`; check the ingress rule is present and the IP is correct |
 | cloudflared fails to restart | Check for YAML syntax errors in `/etc/cloudflared/config.yml` — indentation must use spaces, not tabs |
+| `Rule #N is matching the hostname '', but this will match every hostname` | The catch-all rule has an accidental empty `hostname:` key. Open `/etc/cloudflared/config.yml` and ensure the last ingress entry is exactly `- service: http_status:404` with **no** `hostname:` line |
 | DNS not resolving | Re-run `cloudflared tunnel route dns homelab requests.haegens.be` on `pve-homelab` |
 | Page loads but shows connection error | The IP in the cloudflared config may be wrong — re-check Step 9 and update `/etc/cloudflared/config.yml` |
 | `permission denied` on `data/` | Run `chown -R 1001:1001 /opt/content-requestor/data/` inside CT 180 |
