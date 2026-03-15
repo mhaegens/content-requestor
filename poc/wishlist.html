@@ -113,8 +113,7 @@
 
     function buildWishCard(item) {
       const posterHtml = item.poster
-        ? `<img src="${item.poster}" alt="${item.title}" loading="lazy"
-                onerror="this.parentElement.innerHTML='<div class=\\'poster-placeholder\\'>${ICONS.poster_ph}<span>No poster</span></div>'">`
+        ? `<img src="${item.poster}" alt="${item.title}" loading="lazy" onerror="handlePosterError(this)">`
         : `<div class="poster-placeholder">${ICONS.poster_ph}<span>No poster</span></div>`;
 
       const initials = item.requested_by ? getInitials(item.requested_by) : '?';
