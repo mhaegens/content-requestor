@@ -158,6 +158,11 @@ const ICONS = {
   poster_ph: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
 };
 
+// ── Poster Error Handler ──────────────────────────────────────
+function handlePosterError(img) {
+  img.parentElement.innerHTML = `<div class="poster-placeholder">${ICONS.poster_ph}<span>No poster</span></div>`;
+}
+
 // ── Header Builder ────────────────────────────────────────────
 function buildHeader(activePage) {
   const name = getName();
@@ -261,8 +266,7 @@ function buildCard(item, opts = {}) {
   const { showMeta = false } = opts;
 
   const posterHtml = item.poster
-    ? `<img src="${item.poster}" alt="${item.title}" loading="lazy"
-            onerror="this.parentElement.innerHTML='<div class=\\'poster-placeholder\\'>${ICONS.poster_ph}<span>No poster</span></div>'">`
+    ? `<img src="${item.poster}" alt="${item.title}" loading="lazy" onerror="handlePosterError(this)">`
     : `<div class="poster-placeholder">${ICONS.poster_ph}<span>No poster</span></div>`;
 
   const metaHtml = showMeta && item.requested_by ? `
