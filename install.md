@@ -368,6 +368,15 @@ The database file (`data/requests.db`) is created automatically on first startup
 
 ## Step 8 — Build and start the app
 
+First make sure you have the latest version of the code. If you cloned the
+repo more than a few minutes ago, always pull before building:
+
+```bash
+git pull
+```
+
+Then build and start:
+
 ```bash
 docker compose up -d --build
 ```
