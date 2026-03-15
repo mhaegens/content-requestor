@@ -1,0 +1,22 @@
+# Git
+.git
+.gitignore
+
+# Node
+node_modules
+
+# Next.js cache & output
+.next
+out
+
+# Data (SQLite DB is mounted as a volume, not baked into the image)
+data/
+
+# Dev/config files not needed at runtime
+.env
+.env.*
+!.env.example
+*.md
+poc/
+.vscode/
+.idea/
