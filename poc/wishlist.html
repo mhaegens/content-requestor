@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Requestr — Wish List</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app-header"></div>
+  <div id="app-modal"></div>
+
+  <main class="main">
+    <div class="container">
+
+      <!-- Page Header -->
+      <div style="padding: 2rem 0 1.5rem;">
+        <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.5rem;">
+          <h1 style="font-size:clamp(1.5rem,3vw,2rem); font-weight:800; letter-spacing:-.03em;">Wish List</h1>
+          <span class="count-chip" id="totalCount">0</span>
+        </div>
+        <p style="color:var(--text-2); font-size:.9rem;">Everything your friends want added to Jellyfin.</p>
+      </div>
+
+      <!-- Filter + Sort Row -->
+      <div class="section-header">
+        <div class="filter-row" style="margin-bottom:0;">
+          <span class="filter-label">Filter:</span>
+          <button class="pill active" data-filter="all">All</button>
+          <button class="pill" data-filter="movie">Movies</button>
+          <button class="pill" data-filter="tv">TV Series</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-size:.8rem; color:var(--text-3);">Sort:</span>
+          <select id="sortSelect" style="
+            background:var(--card); border:1.5px solid var(--border);
+            color:var(--text-2); padding:0.3rem 0.5rem;
+            border-radius:var(--r-sm); font-size:.82rem;
+            outline:none; cursor:pointer; font-family:var(--font);
+          ">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="az">A → Z</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Cards grid -->
+      <div style="margin-top: 1.25rem;">
+        <div class="cards-grid" id="wishlistGrid"></div>
+        <div id="emptyWishlist" style="display:none;">
+          <div class="empty-state">
+            <div class="empty-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.25" style="width:56px;height:56px;">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+              </svg>
+            </div>
+            <h3>No requests yet</h3>
+            <p>Be the first! <a href="index.html" style="color:var(--accent);">Search for something</a> to add.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+    let currentFilter = 'all';
+    let currentSort   = 'newest';
+
+    // ── Filters ───────────────────────────────────────────────
+    document.querySelectorAll('.pill[data-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.pill[data-filter]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentFilter = btn.dataset.filter;
+        renderWishlist();
+      });
+    });
+
+    document.getElementById('sortSelect').addEventListener('change', e => {
+      currentSort = e.target.value;
+      renderWishlist();
+    });
+
+    // ── Render ────────────────────────────────────────────────
+    function renderWishlist() {
+      let list = getWishlist();
+
+      // Filter
+      if (currentFilter !== 'all') list = list.filter(i => i.type === currentFilter);
+
+      // Sort
+      if (currentSort === 'newest') list.sort((a, b) => new Date(b.requested_at) - new Date(a.requested_at));
+      else if (currentSort === 'oldest') list.sort((a, b) => new Date(a.requested_at) - new Date(b.requested_at));
+      else if (currentSort === 'az') list.sort((a, b) => a.title.localeCompare(b.title));
+
+      const grid  = document.getElementById('wishlistGrid');
+      const empty = document.getElementById('emptyWishlist');
+      const chip  = document.getElementById('totalCount');
+
+      chip.textContent = getWishlist().length; // total, not filtered
+
+      if (!list.length) {
+        grid.innerHTML = '';
+        empty.style.display = '';
+        return;
+      }
+      empty.style.display = 'none';
+      grid.innerHTML = list.map(item => buildWishCard(item)).join('');
+    }
+
+    function buildWishCard(item) {
+      const posterHtml = item.poster
+        ? `<img src="${item.poster}" alt="${item.title}" loading="lazy"
+                onerror="this.parentElement.innerHTML='<div class=\\'poster-placeholder\\'>${ICONS.poster_ph}<span>No poster</span></div>'">`
+        : `<div class="poster-placeholder">${ICONS.poster_ph}<span>No poster</span></div>`;
+
+      const initials = item.requested_by ? getInitials(item.requested_by) : '?';
+
+      return `
+        <div class="card" data-id="${item.id}">
+          <div class="card-poster">
+            ${posterHtml}
+            <span class="card-type-badge ${item.type}">${item.type === 'tv' ? 'TV Series' : 'Movie'}</span>
+            <span class="card-rating">${ICONS.star} ${item.rating?.toFixed(1) ?? '—'}</span>
+          </div>
+          <div class="card-body">
+            <div class="card-title">${item.title}</div>
+            <div class="card-year">${item.year}</div>
+            <div class="card-overview">${item.overview}</div>
+            <div class="card-meta" style="margin-top:.4rem;">
+              <div class="meta-avatar">${initials}</div>
+              <span class="meta-text">${item.requested_by ?? 'Anonymous'} · ${fmtDateShort(item.requested_at)}</span>
+            </div>
+            <div class="card-action">
+              <button class="btn btn-success btn-full" disabled>
+                ${ICONS.check} Requested
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ── Init ──────────────────────────────────────────────────
+    initApp('wishlist');
+    renderWishlist();
+  </script>
+</body>
+</html>
