@@ -25,7 +25,7 @@ export default function RootLayout({
           color: '#6e7681',
           userSelect: 'none',
         }}>
-          build {process.env.NEXT_PUBLIC_BUILD_SHA} &middot; {process.env.NEXT_PUBLIC_BUILD_TIME?.slice(0, 10)}
+          v1.0.{process.env.NEXT_PUBLIC_BUILD_COUNT ?? '0'} &middot; {process.env.NEXT_PUBLIC_BUILD_SHA ?? 'dev'} &middot; {process.env.NEXT_PUBLIC_BUILD_TIME?.slice(0, 19).replace('T', ' ') ?? 'unknown'}
         </footer>
       </body>
     </html>

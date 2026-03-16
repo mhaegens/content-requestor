@@ -34,9 +34,10 @@ declare global {
 const db: Database.Database =
   global._requestrDb ?? new Database(DB_PATH);
 
-if (process.env.NODE_ENV !== 'production') {
-  global._requestrDb = db;
-}
+// Always cache to global — prevents multiple connections if the module is
+// re-evaluated (Next.js HMR in dev) or a new worker is spun up in production,
+// which would otherwise risk SQLITE_BUSY "database is locked" errors.
+global._requestrDb = db;
 
 // Performance & safety pragmas
 db.pragma('journal_mode = WAL');
@@ -93,19 +94,35 @@ export function getAllRequests(): Request[] {
   return stmts.getAll.all();
 }
 
+// Atomic check-then-insert in a single transaction. Prevents a race condition
+// where two concurrent requests for the same TMDB ID both pass the duplicate
+// check and then the second one throws a UNIQUE constraint violation (which
+// would surface as a 500 instead of a clean 409).
+const insertIfNew = db.transaction(
+  (data: Omit<Request, 'id' | 'requested_at'>): Request | null => {
+    if (stmts.findByTmdb.get(data.tmdb_id)) return null; // duplicate
+    const row: Request = {
+      ...data,
+      id: uuidv4(),
+      requested_at: new Date().toISOString(),
+    };
+    stmts.insert.run(row);
+    return row;
+  },
+);
+
 export function addRequest(
   data: Omit<Request, 'id' | 'requested_at'>,
 ): Request | null {
-  if (stmts.findByTmdb.get(data.tmdb_id)) return null; // duplicate
-
-  const row = {
-    ...data,
-    id: uuidv4(),
-    requested_at: new Date().toISOString(),
-  };
-
-  stmts.insert.run(row);
-  return stmts.getById.get(row.id) ?? null;
+  try {
+    return insertIfNew(data);
+  } catch (err) {
+    // If a UNIQUE constraint fires despite the transaction guard (e.g. a second
+    // connection won the race), treat it as a duplicate rather than a hard error.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('UNIQUE')) return null;
+    throw err;
+  }
 }
 
 export function deleteRequest(id: string): boolean {

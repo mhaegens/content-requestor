@@ -21,6 +21,8 @@ export function SearchPage() {
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Tracks in-flight request submissions to prevent duplicate concurrent POSTs.
+  const pendingRef = useRef<Set<number>>(new Set());
 
   // Load already-requested TMDB IDs on mount
   useEffect(() => {
@@ -63,6 +65,10 @@ export function SearchPage() {
         return;
       }
 
+      // Prevent duplicate concurrent submissions for the same item.
+      if (pendingRef.current.has(item.tmdb_id)) return;
+      pendingRef.current.add(item.tmdb_id);
+
       // Optimistic update
       setRequestedIds((prev) => new Set(prev).add(item.tmdb_id));
 
@@ -82,16 +88,26 @@ export function SearchPage() {
           }),
         });
 
-        const data = await res.json();
+        // Safely parse JSON — if the server returns HTML (error page, proxy
+        // timeout, etc.) res.json() would throw and swallow the real error.
+        let data: Record<string, unknown> = {};
+        try {
+          data = await res.json();
+        } catch {
+          // Non-JSON body (e.g. reverse-proxy error page). Treat as server error.
+          throw new Error(`Server returned non-JSON response (HTTP ${res.status})`);
+        }
 
         if (res.status === 409) {
+          // Item is already in the wishlist — keep optimistic state, just inform.
           toast('Already in the wish list!', 'info');
           return;
         }
-        if (!res.ok) throw new Error(data.error ?? 'Request failed');
+        if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : `HTTP ${res.status}`);
 
         toast(`"${item.title}" added to wish list!`, 'success');
-      } catch {
+      } catch (err) {
+        console.error('[handleRequest] failed to add request:', err);
         // Roll back optimistic update
         setRequestedIds((prev) => {
           const next = new Set(prev);
@@ -99,6 +115,8 @@ export function SearchPage() {
           return next;
         });
         toast('Failed to add request. Please try again.', 'danger');
+      } finally {
+        pendingRef.current.delete(item.tmdb_id);
       }
     },
     [openModal, toast],
