@@ -56,10 +56,27 @@ const nextConfig = {
     NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
   },
   // better-sqlite3 is a native Node.js addon (.node file).
-  // Without this, Next.js tries to webpack-bundle it, which breaks native
-  // addon path resolution at runtime and causes all DB routes to fail (500).
+  // `experimental.serverComponentsExternalPackages` is documented to cover
+  // both Server Components and Route Handlers, but in practice it only
+  // reliably excludes Server Components from the webpack bundle in Next.js
+  // 14.x.  The explicit `webpack.externals` below is the guaranteed path:
+  // it patches *every* server-side compilation pass (server components,
+  // route handlers, middleware) so `require('better-sqlite3')` is left as a
+  // native Node.js require rather than being inlined by webpack.
   experimental: {
     serverComponentsExternalPackages: ['better-sqlite3'],
+  },
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      // Prevent webpack from bundling better-sqlite3 in any server-side pass.
+      // Without this the native .node addon cannot resolve its binary at
+      // runtime and every call to /api/requests returns 500.
+      config.externals = [
+        ...(Array.isArray(config.externals) ? config.externals : [config.externals].filter(Boolean)),
+        'better-sqlite3',
+      ];
+    }
+    return config;
   },
   headers: async () => [
     {

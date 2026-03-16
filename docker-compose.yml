@@ -1,3 +1,21 @@
+volumes:
+  # Named volume for the SQLite database.
+  #
+  # WHY a named volume instead of a bind-mount (./data:/app/data):
+  # With a bind-mount Docker creates ./data as root:root on the host.
+  # The container's non-root `nextjs` user (UID 1001) then cannot write
+  # to /app/data, so `new Database(...)` throws EACCES and every
+  # POST /api/requests returns 500 ("Failed to add request").
+  #
+  # A named volume is initialised by Docker from the image layer, which
+  # already has `chown nextjs:nodejs /app/data`, so the correct ownership
+  # is preserved and the app can write the SQLite file on first run.
+  #
+  # To inspect or back up the database:
+  #   docker volume inspect content-requestor_app_data
+  #   docker run --rm -v content-requestor_app_data:/data alpine ls /data
+  app_data:
+
 services:
 
   # ── Content Requestor app ───────────────────────────────────────────────
@@ -12,7 +30,7 @@ services:
       - TMDB_READ_TOKEN=${TMDB_READ_TOKEN}
     volumes:
       # Persist the SQLite database across container restarts/updates
-      - ./data:/app/data
+      - app_data:/app/data
     ports:
       # Bind to all interfaces so the Proxmox host's cloudflared daemon
       # can reach the app at <CT-IP>:3000 via the homelab tunnel.
