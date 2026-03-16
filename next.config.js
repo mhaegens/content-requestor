@@ -7,6 +7,14 @@ try {
   buildSha = execSync('git rev-parse --short HEAD').toString().trim();
 } catch { /* not a git repo or git not available */ }
 
+// Total commit count — auto-increments with every push, giving a monotonic
+// build number that's more meaningful than a date when pushing multiple times
+// per day.
+let buildCount = '0';
+try {
+  buildCount = execSync('git rev-list --count HEAD').toString().trim();
+} catch { /* not a git repo or git not available */ }
+
 const isDev = process.env.NODE_ENV === 'development';
 
 const securityHeaders = [
@@ -44,6 +52,7 @@ const nextConfig = {
   // the values are inlined at build time in both server and client components.
   env: {
     NEXT_PUBLIC_BUILD_SHA: buildSha,
+    NEXT_PUBLIC_BUILD_COUNT: buildCount,
     NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
   },
   // better-sqlite3 is a native Node.js addon (.node file).
