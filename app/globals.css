@@ -510,3 +510,55 @@ tbody tr:hover td { background: var(--card-hover); }
   .hero { padding: 2rem 0.5rem 1.5rem; }
   .stats-row { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ── Jellyfin availability ───────────────────────────────── */
+
+/* Poster overlay shown on WishlistCard when available in Jellyfin */
+.jellyfin-available-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.5rem;
+  background: var(--success);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* Status badge in the admin table */
+.jellyfin-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: var(--surface-2, var(--card));
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.jellyfin-status-badge.available {
+  background: var(--success-bg);
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 35%, transparent);
+}
+
+/* "In Jellyfin" filter pill variant */
+.pill.pill-jellyfin.active {
+  background: var(--success-bg);
+  border-color: var(--success);
+  color: var(--success);
+}
+.pill.pill-jellyfin:not(.active):hover {
+  border-color: var(--success);
+  color: var(--success);
+  background: var(--success-bg);
+}
