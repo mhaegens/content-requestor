@@ -5,7 +5,7 @@ import type { Request } from '@/types';
 import { WishlistCard } from './MediaCard';
 import { SkeletonGrid } from './SkeletonCard';
 
-type FilterType = 'all' | 'movie' | 'tv';
+type FilterType = 'all' | 'movie' | 'tv' | 'available';
 
 export function WishlistPage() {
   const [requests, setRequests] = useState<Request[]>([]);
@@ -31,7 +31,9 @@ export function WishlistPage() {
   useEffect(() => { loadRequests(); }, [loadRequests]);
 
   const filtered =
-    filter === 'all' ? requests : requests.filter((r) => r.media_type === filter);
+    filter === 'all' ? requests
+    : filter === 'available' ? requests.filter((r) => r.available_in_jellyfin)
+    : requests.filter((r) => r.media_type === filter);
 
   return (
     <main className="main">
@@ -47,13 +49,13 @@ export function WishlistPage() {
         {/* Filter bar */}
         <div className="filter-row" style={{ marginBottom: '1.75rem' }}>
           <span className="filter-label">Filter:</span>
-          {(['all', 'movie', 'tv'] as FilterType[]).map((f) => (
+          {(['all', 'movie', 'tv', 'available'] as FilterType[]).map((f) => (
             <button
               key={f}
-              className={`pill${filter === f ? ' active' : ''}`}
+              className={`pill${filter === f ? ' active' : ''}${f === 'available' ? ' pill-jellyfin' : ''}`}
               onClick={() => setFilter(f)}
             >
-              {f === 'all' ? 'All' : f === 'movie' ? 'Movies' : 'TV Series'}
+              {f === 'all' ? 'All' : f === 'movie' ? 'Movies' : f === 'tv' ? 'TV Series' : 'In Jellyfin'}
             </button>
           ))}
         </div>
@@ -89,9 +91,15 @@ export function WishlistPage() {
             <h3>
               {filter === 'all'
                 ? 'No requests yet'
+                : filter === 'available'
+                ? 'Nothing available in Jellyfin yet'
                 : `No ${filter === 'movie' ? 'movie' : 'TV series'} requests yet`}
             </h3>
-            <p>Head to the search page to add something!</p>
+            <p>
+              {filter === 'available'
+                ? 'The admin will mark content as available once it has been added to Jellyfin.'
+                : 'Head to the search page to add something!'}
+            </p>
           </div>
         )}
 

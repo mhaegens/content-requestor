@@ -50,19 +50,27 @@ db.pragma('foreign_keys = ON');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS requests (
-    id           TEXT PRIMARY KEY,
-    tmdb_id      INTEGER NOT NULL UNIQUE,
-    media_type   TEXT    NOT NULL CHECK(media_type IN ('movie','tv')),
-    title        TEXT    NOT NULL,
-    year         TEXT,
-    poster_path  TEXT,
-    overview     TEXT,
-    vote_average REAL    DEFAULT 0,
-    requested_by TEXT    NOT NULL DEFAULT 'Anonymous',
-    requested_at TEXT    NOT NULL
+    id                    TEXT PRIMARY KEY,
+    tmdb_id               INTEGER NOT NULL UNIQUE,
+    media_type            TEXT    NOT NULL CHECK(media_type IN ('movie','tv')),
+    title                 TEXT    NOT NULL,
+    year                  TEXT,
+    poster_path           TEXT,
+    overview              TEXT,
+    vote_average          REAL    DEFAULT 0,
+    requested_by          TEXT    NOT NULL DEFAULT 'Anonymous',
+    requested_at          TEXT    NOT NULL,
+    available_in_jellyfin INTEGER NOT NULL DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS idx_requested_at ON requests(requested_at DESC);
 `);
+
+// Idempotent migration: add column to existing databases
+try {
+  db.exec(`ALTER TABLE requests ADD COLUMN available_in_jellyfin INTEGER NOT NULL DEFAULT 0`);
+} catch {
+  // Column already exists — safe to ignore
+}
 
 // ---------------------------------------------------------------------------
 // Queries
@@ -84,6 +92,9 @@ const stmts = {
   `),
   deleteOne: db.prepare<[string]>('DELETE FROM requests WHERE id = ?'),
   deleteAll: db.prepare('DELETE FROM requests'),
+  setJellyfinFlag: db.prepare<[number, string]>(
+    'UPDATE requests SET available_in_jellyfin = ? WHERE id = ?',
+  ),
 };
 
 // ---------------------------------------------------------------------------
@@ -91,7 +102,8 @@ const stmts = {
 // ---------------------------------------------------------------------------
 
 export function getAllRequests(): Request[] {
-  return stmts.getAll.all();
+  const rows = stmts.getAll.all();
+  return rows.map((r) => ({ ...r, available_in_jellyfin: Boolean((r as unknown as { available_in_jellyfin: number }).available_in_jellyfin) }));
 }
 
 // Atomic check-then-insert in a single transaction. Prevents a race condition
@@ -99,12 +111,13 @@ export function getAllRequests(): Request[] {
 // check and then the second one throws a UNIQUE constraint violation (which
 // would surface as a 500 instead of a clean 409).
 const insertIfNew = db.transaction(
-  (data: Omit<Request, 'id' | 'requested_at'>): Request | null => {
+  (data: Omit<Request, 'id' | 'requested_at' | 'available_in_jellyfin'>): Request | null => {
     if (stmts.findByTmdb.get(data.tmdb_id)) return null; // duplicate
     const row: Request = {
       ...data,
       id: uuidv4(),
       requested_at: new Date().toISOString(),
+      available_in_jellyfin: false,
     };
     stmts.insert.run(row);
     return row;
@@ -112,7 +125,7 @@ const insertIfNew = db.transaction(
 );
 
 export function addRequest(
-  data: Omit<Request, 'id' | 'requested_at'>,
+  data: Omit<Request, 'id' | 'requested_at' | 'available_in_jellyfin'>,
 ): Request | null {
   try {
     return insertIfNew(data);
@@ -135,4 +148,8 @@ export function clearAllRequests(): number {
 
 export function isRequested(tmdbId: number): boolean {
   return !!stmts.findByTmdb.get(tmdbId);
+}
+
+export function setJellyfinAvailable(id: string, available: boolean): boolean {
+  return stmts.setJellyfinFlag.run(available ? 1 : 0, id).changes > 0;
 }

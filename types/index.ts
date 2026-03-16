@@ -12,6 +12,7 @@ export interface Request {
   vote_average: number;
   requested_by: string;
   requested_at: string; // ISO 8601
+  available_in_jellyfin: boolean;
 }
 
 /** Shape returned from the TMDB proxy endpoint */

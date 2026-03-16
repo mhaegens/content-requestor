@@ -154,6 +154,12 @@ export function WishlistCard({ item }: WishlistCardProps) {
           <StarIcon />
           {item.vote_average.toFixed(1)}
         </span>
+        {item.available_in_jellyfin && (
+          <div className="jellyfin-available-overlay">
+            <CheckIcon />
+            Available in Jellyfin
+          </div>
+        )}
       </div>
       <div className="card-body">
         <div className="card-title">{item.title}</div>

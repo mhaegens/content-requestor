@@ -62,6 +62,15 @@ function ShieldIcon() {
   );
 }
 
+function JellyfinIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }} fill="none">
+      <circle cx="12" cy="12" r="10" />
+      <polygon points="10 8 16 12 10 16 10 8" fill={filled ? 'white' : 'currentColor'} stroke="none" />
+    </svg>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -74,6 +83,7 @@ export function MasterviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const loadRequests = useCallback(async () => {
     setLoading(true);
@@ -108,6 +118,31 @@ export function MasterviewPage() {
     toast(`Copied ${requests.length} TMDB ID${requests.length !== 1 ? 's' : ''}`, 'info');
   };
 
+  // Toggle Jellyfin availability flag
+  const handleToggleJellyfin = async (r: Request) => {
+    setTogglingId(r.id);
+    const newValue = !r.available_in_jellyfin;
+    try {
+      const res = await fetch(`/api/requests/${r.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ available_in_jellyfin: newValue }),
+      });
+      if (!res.ok) throw new Error('Update failed');
+      setRequests((prev) =>
+        prev.map((item) => item.id === r.id ? { ...item, available_in_jellyfin: newValue } : item),
+      );
+      toast(
+        newValue ? `"${r.title}" marked as available in Jellyfin` : `"${r.title}" marked as pending`,
+        newValue ? 'success' : 'info',
+      );
+    } catch {
+      toast('Failed to update Jellyfin status.', 'danger');
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   // Delete a single request
   const handleDelete = async (id: string, title: string) => {
     try {
@@ -136,6 +171,7 @@ export function MasterviewPage() {
   // Stats
   const movies = requests.filter((r) => r.media_type === 'movie').length;
   const shows = requests.filter((r) => r.media_type === 'tv').length;
+  const inJellyfin = requests.filter((r) => r.available_in_jellyfin).length;
 
   return (
     <main className="main">
@@ -166,6 +202,10 @@ export function MasterviewPage() {
           <div className="stat-card">
             <div className="stat-label">TV Series</div>
             <div className="stat-value">{shows}</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">In Jellyfin</div>
+            <div className="stat-value" style={{ color: 'var(--success)' }}>{inJellyfin}</div>
           </div>
         </div>
 
@@ -231,6 +271,7 @@ export function MasterviewPage() {
                   <th></th>
                   <th>Title</th>
                   <th>Type</th>
+                  <th>Status</th>
                   <th>TMDB ID</th>
                   <th>Requested By</th>
                   <th>Date</th>
@@ -273,6 +314,13 @@ export function MasterviewPage() {
                         </span>
                       </td>
 
+                      {/* Jellyfin Status */}
+                      <td>
+                        <span className={`jellyfin-status-badge${r.available_in_jellyfin ? ' available' : ''}`}>
+                          {r.available_in_jellyfin ? 'In Jellyfin' : 'Pending'}
+                        </span>
+                      </td>
+
                       {/* TMDB ID */}
                       <td>
                         <span className="tmdb-id">{r.tmdb_id}</span>
@@ -289,6 +337,15 @@ export function MasterviewPage() {
                       {/* Actions */}
                       <td>
                         <div className="td-actions">
+                          <button
+                            className={`btn btn-sm${r.available_in_jellyfin ? ' btn-success' : ' btn-outline'}`}
+                            onClick={() => handleToggleJellyfin(r)}
+                            disabled={togglingId === r.id}
+                            title={r.available_in_jellyfin ? 'Mark as pending' : 'Mark as available in Jellyfin'}
+                          >
+                            <JellyfinIcon filled={r.available_in_jellyfin} />
+                            {r.available_in_jellyfin ? 'Available' : 'Mark Available'}
+                          </button>
                           <button
                             className={`btn btn-outline btn-sm${copiedId === r.id ? ' copy-flash' : ''}`}
                             onClick={() => handleCopyId(r.tmdb_id, r.id)}
