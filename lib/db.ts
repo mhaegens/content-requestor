@@ -153,3 +153,34 @@ export function isRequested(tmdbId: number): boolean {
 export function setJellyfinAvailable(id: string, available: boolean): boolean {
   return stmts.setJellyfinFlag.run(available ? 1 : 0, id).changes > 0;
 }
+
+const statsQuery = db.prepare<[string], {
+  total: number;
+  pending: number;
+  movies: number;
+  tv: number;
+  in_jellyfin: number;
+  new_count: number;
+}>(`
+  SELECT
+    COUNT(*)                                                        AS total,
+    SUM(CASE WHEN available_in_jellyfin = 0 THEN 1 ELSE 0 END)     AS pending,
+    SUM(CASE WHEN media_type = 'movie'      THEN 1 ELSE 0 END)     AS movies,
+    SUM(CASE WHEN media_type = 'tv'         THEN 1 ELSE 0 END)     AS tv,
+    SUM(CASE WHEN available_in_jellyfin = 1 THEN 1 ELSE 0 END)     AS in_jellyfin,
+    SUM(CASE WHEN requested_at >= ?         THEN 1 ELSE 0 END)     AS new_count
+  FROM requests
+`);
+
+/** Returns aggregated stats. Pass an ISO 8601 timestamp as `since` to count recent requests. */
+export function getRequestStats(since: string) {
+  const row = statsQuery.get(since)!;
+  return {
+    total:       row.total       ?? 0,
+    pending:     row.pending     ?? 0,
+    movies:      row.movies      ?? 0,
+    tv:          row.tv          ?? 0,
+    in_jellyfin: row.in_jellyfin ?? 0,
+    new_count:   row.new_count   ?? 0,
+  };
+}
