@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Request } from '@/types';
 import { useToast } from './ToastProvider';
 
@@ -71,6 +71,192 @@ function JellyfinIcon({ filled }: { filled: boolean }) {
   );
 }
 
+function ShareIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ width: 16, height: 16 }}>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Card generation helpers
+// ---------------------------------------------------------------------------
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+async function generateCardImage(request: Request): Promise<Blob> {
+  const W = 600, H = 340;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+
+  // Background gradient
+  const grad = ctx.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0, '#0d1117');
+  grad.addColorStop(1, '#1a2035');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle border
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+
+  const posterW = 190, posterH = 285, posterX = 24, posterY = 27;
+  let textX = posterX + posterW + 28;
+
+  // Poster
+  if (request.poster_path) {
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image();
+        i.crossOrigin = 'anonymous';
+        i.onload = () => resolve(i);
+        i.onerror = reject;
+        i.src = `/api/image-proxy?path=${request.poster_path}`;
+      });
+      ctx.save();
+      roundedRect(ctx, posterX, posterY, posterW, posterH, 10);
+      ctx.clip();
+      ctx.drawImage(img, posterX, posterY, posterW, posterH);
+      ctx.restore();
+    } catch {
+      // poster failed to load — draw placeholder
+      ctx.fillStyle = '#1c2128';
+      roundedRect(ctx, posterX, posterY, posterW, posterH, 10);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.font = '48px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('🎬', posterX + posterW / 2, posterY + posterH / 2 + 18);
+      ctx.textAlign = 'left';
+    }
+  } else {
+    // No poster path — shift text to centre-ish
+    textX = 36;
+  }
+
+  const textW = W - textX - 24;
+  let y = 44;
+
+  // "Now on Jellyfin" badge
+  ctx.font = 'bold 11px Inter, system-ui, sans-serif';
+  const badgeText = '▶  Now on Jellyfin';
+  const badgeW = ctx.measureText(badgeText).width + 20;
+  const badgeH = 24;
+  ctx.fillStyle = '#3fb950';
+  roundedRect(ctx, textX, y, badgeW, badgeH, 999);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(badgeText, textX + 10, y + 16);
+
+  y += badgeH + 18;
+
+  // Title
+  ctx.fillStyle = '#e6edf3';
+  const fontSize = request.title.length > 30 ? 22 : 26;
+  ctx.font = `bold ${fontSize}px Inter, system-ui, sans-serif`;
+  const titleLines = wrapText(ctx, request.title, textW);
+  for (const line of titleLines.slice(0, 3)) {
+    ctx.fillText(line, textX, y);
+    y += fontSize + 6;
+  }
+
+  y += 6;
+
+  // Year + type
+  ctx.fillStyle = 'rgba(230,237,243,0.5)';
+  ctx.font = '14px Inter, system-ui, sans-serif';
+  const typeLabel = request.media_type === 'tv' ? 'TV Series' : 'Movie';
+  ctx.fillText(`${request.year}  ·  ${typeLabel}`, textX, y);
+
+  // Divider line near bottom
+  const dividerY = H - 72;
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(textX, dividerY);
+  ctx.lineTo(W - 24, dividerY);
+  ctx.stroke();
+
+  // "Requested by" label
+  ctx.fillStyle = 'rgba(230,237,243,0.4)';
+  ctx.font = '11px Inter, system-ui, sans-serif';
+  ctx.fillText('REQUESTED BY', textX, dividerY + 20);
+
+  // Name
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 15px Inter, system-ui, sans-serif';
+  ctx.fillText(request.requested_by || 'Anonymous', textX, dividerY + 40);
+
+  // Branding (bottom-right)
+  ctx.fillStyle = 'rgba(230,237,243,0.2)';
+  ctx.font = '11px Inter, system-ui, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('via Requestr', W - 18, H - 14);
+
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((b) => {
+      if (b) resolve(b);
+      else reject(new Error('Canvas toBlob failed'));
+    }, 'image/png');
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -84,6 +270,11 @@ export function MasterviewPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [showCardModal, setShowCardModal] = useState(false);
+  const [cardRequest, setCardRequest] = useState<Request | null>(null);
+  const [cardCopied, setCardCopied] = useState(false);
+  const [cardGenerating, setCardGenerating] = useState(false);
+  const cardCopiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadRequests = useCallback(async () => {
     setLoading(true);
@@ -129,17 +320,68 @@ export function MasterviewPage() {
         body: JSON.stringify({ available_in_jellyfin: newValue }),
       });
       if (!res.ok) throw new Error('Update failed');
+      const updated = { ...r, available_in_jellyfin: newValue };
       setRequests((prev) =>
-        prev.map((item) => item.id === r.id ? { ...item, available_in_jellyfin: newValue } : item),
+        prev.map((item) => item.id === r.id ? updated : item),
       );
       toast(
         newValue ? `"${r.title}" marked as available in Jellyfin` : `"${r.title}" marked as pending`,
         newValue ? 'success' : 'info',
       );
+      if (newValue) {
+        setCardRequest(updated);
+        setCardCopied(false);
+        setShowCardModal(true);
+      }
     } catch {
       toast('Failed to update Jellyfin status.', 'danger');
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  // Open card modal for an already-available request
+  const handleOpenCard = (r: Request) => {
+    setCardRequest(r);
+    setCardCopied(false);
+    setShowCardModal(true);
+  };
+
+  // Copy card image to clipboard
+  const handleCopyCard = async () => {
+    if (!cardRequest) return;
+    setCardGenerating(true);
+    try {
+      const blob = await generateCardImage(cardRequest);
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      setCardCopied(true);
+      toast('Notification card copied!', 'success');
+      if (cardCopiedTimer.current) clearTimeout(cardCopiedTimer.current);
+      cardCopiedTimer.current = setTimeout(() => setCardCopied(false), 2500);
+    } catch {
+      toast('Failed to copy image. Try downloading instead.', 'danger');
+    } finally {
+      setCardGenerating(false);
+    }
+  };
+
+  // Download card image
+  const handleDownloadCard = async () => {
+    if (!cardRequest) return;
+    setCardGenerating(true);
+    try {
+      const blob = await generateCardImage(cardRequest);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `jellyfin-${cardRequest.title.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast('Card downloaded!', 'success');
+    } catch {
+      toast('Failed to generate card.', 'danger');
+    } finally {
+      setCardGenerating(false);
     }
   };
 
@@ -346,6 +588,15 @@ export function MasterviewPage() {
                             <JellyfinIcon filled={r.available_in_jellyfin} />
                             {r.available_in_jellyfin ? 'Available' : 'Mark Available'}
                           </button>
+                          {r.available_in_jellyfin && (
+                            <button
+                              className="btn-icon-only"
+                              onClick={() => handleOpenCard(r)}
+                              title="Generate notification card"
+                            >
+                              <ShareIcon />
+                            </button>
+                          )}
                           <button
                             className={`btn btn-outline btn-sm${copiedId === r.id ? ' copy-flash' : ''}`}
                             onClick={() => handleCopyId(r.tmdb_id, r.id)}
@@ -370,6 +621,72 @@ export function MasterviewPage() {
             </table>
           </div>
         )}
+      </div>
+
+      {/* Notification Card Modal */}
+      <div
+        className={`card-modal-overlay${showCardModal ? ' open' : ''}`}
+        onClick={(e) => { if (e.target === e.currentTarget) setShowCardModal(false); }}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="card-modal-box">
+          <div className="card-modal-header">
+            <span>Share Notification Card</span>
+            <button className="btn-icon-only" onClick={() => setShowCardModal(false)} title="Close">
+              <CloseIcon />
+            </button>
+          </div>
+
+          {cardRequest && (
+            <>
+              {/* Card preview */}
+              <div className="notif-card-preview">
+                {cardRequest.poster_path && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    className="notif-card-poster"
+                    src={`https://image.tmdb.org/t/p/w185${cardRequest.poster_path}`}
+                    alt={cardRequest.title}
+                  />
+                )}
+                <div className="notif-card-body">
+                  <div className="notif-card-badge">▶ Now on Jellyfin</div>
+                  <div className="notif-card-title">{cardRequest.title}</div>
+                  <div className="notif-card-meta">
+                    {cardRequest.year} · {cardRequest.media_type === 'tv' ? 'TV Series' : 'Movie'}
+                  </div>
+                  <div className="notif-card-divider" />
+                  <div className="notif-card-requester-label">Requested by</div>
+                  <div className="notif-card-requester">{cardRequest.requested_by || 'Anonymous'}</div>
+                </div>
+              </div>
+
+              <p className="card-modal-hint">
+                Click &ldquo;Copy Image&rdquo; then paste directly into WhatsApp, Telegram, Discord, or any messaging app.
+              </p>
+
+              <div className="card-modal-actions">
+                <button
+                  className={`btn btn-primary btn-sm${cardCopied ? ' btn-success' : ''}`}
+                  onClick={handleCopyCard}
+                  disabled={cardGenerating}
+                >
+                  <CopyIcon />
+                  {cardCopied ? 'Copied!' : cardGenerating ? 'Generating…' : 'Copy Image'}
+                </button>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={handleDownloadCard}
+                  disabled={cardGenerating}
+                >
+                  <DownloadIcon />
+                  Download
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Confirm clear-all dialog */}
