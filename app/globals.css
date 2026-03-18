@@ -608,9 +608,9 @@ tbody tr:hover td { background: var(--card-hover); }
 .notif-card-badge {
   display: inline-flex; align-items: center;
   background: #3fb950; color: #fff;
-  font-size: 0.7rem; font-weight: 700;
-  padding: 0.2rem 0.6rem; border-radius: 999px;
-  width: fit-content; margin-bottom: 0.35rem;
+  font-size: 0.85rem; font-weight: 700;
+  padding: 0.3rem 0.85rem; border-radius: 999px;
+  width: fit-content; margin-bottom: 0.75rem;
   letter-spacing: 0.02em;
 }
 .notif-card-title {
