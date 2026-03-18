@@ -205,28 +205,35 @@ async function generateCardImage(request: Request): Promise<Blob> {
   ctx.fillStyle = '#ffffff';
   ctx.fillText(badgeText, textX + 14, y + 22);
 
-  y += badgeH + 26;
+  const badgeBottom = y + badgeH;
+  const dividerY = H - 72;
 
-  // Title
-  ctx.fillStyle = '#e6edf3';
+  // Pre-calculate title lines to bottom-anchor the block above the divider
   const fontSize = request.title.length > 30 ? 22 : 26;
   ctx.font = `bold ${fontSize}px Inter, system-ui, sans-serif`;
   const titleLines = wrapText(ctx, request.title, textW);
-  for (const line of titleLines.slice(0, 3)) {
-    ctx.fillText(line, textX, y);
-    y += fontSize + 6;
+  const clampedLines = titleLines.slice(0, 3);
+  const titleBlockH = clampedLines.length * (fontSize + 6) + 6 + 20;
+  let titleY = dividerY - 24 - titleBlockH;
+  titleY = Math.max(titleY, badgeBottom + 20);
+
+  // Title
+  ctx.fillStyle = '#e6edf3';
+  let y2 = titleY;
+  for (const line of clampedLines) {
+    ctx.fillText(line, textX, y2);
+    y2 += fontSize + 6;
   }
 
-  y += 6;
+  y2 += 6;
 
   // Year + type
   ctx.fillStyle = 'rgba(230,237,243,0.5)';
   ctx.font = '14px Inter, system-ui, sans-serif';
   const typeLabel = request.media_type === 'tv' ? 'TV Series' : 'Movie';
-  ctx.fillText(`${request.year}  ·  ${typeLabel}`, textX, y);
+  ctx.fillText(`${request.year}  ·  ${typeLabel}`, textX, y2);
 
   // Divider line near bottom
-  const dividerY = H - 72;
   ctx.strokeStyle = 'rgba(255,255,255,0.08)';
   ctx.lineWidth = 1;
   ctx.beginPath();
