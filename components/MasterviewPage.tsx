@@ -195,17 +195,17 @@ async function generateCardImage(request: Request): Promise<Blob> {
   let y = 44;
 
   // "Now on Jellyfin" badge
-  ctx.font = 'bold 11px Inter, system-ui, sans-serif';
+  ctx.font = 'bold 15px Inter, system-ui, sans-serif';
   const badgeText = '▶  Now on Jellyfin';
-  const badgeW = ctx.measureText(badgeText).width + 20;
-  const badgeH = 24;
+  const badgeW = ctx.measureText(badgeText).width + 28;
+  const badgeH = 32;
   ctx.fillStyle = '#3fb950';
   roundedRect(ctx, textX, y, badgeW, badgeH, 999);
   ctx.fill();
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(badgeText, textX + 10, y + 16);
+  ctx.fillText(badgeText, textX + 14, y + 22);
 
-  y += badgeH + 18;
+  y += badgeH + 26;
 
   // Title
   ctx.fillStyle = '#e6edf3';
