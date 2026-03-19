@@ -139,7 +139,7 @@
       const list = getWishlist();
       const filtered = currentFilter === 'all' ? list : list.filter(i => i.type === currentFilter);
       if (!filtered.length) { toast('Nothing to copy', 'info'); return; }
-      const ids = filtered.map(i => String(i.id)).join('\n');
+      const ids = filtered.map(i => 'tmdb:' + String(i.id)).join('\n');
       await copyText(ids);
       toast(`Copied ${filtered.length} TMDB ID${filtered.length > 1 ? 's' : ''}`, 'success');
     });
@@ -230,7 +230,7 @@
 
     // ── Copy single ID ────────────────────────────────────────
     async function copyId(id) {
-      await copyText(String(id));
+      await copyText('tmdb:' + String(id));
       const btn = document.getElementById(`copy-btn-${id}`);
       if (btn) {
         const original = btn.innerHTML;
