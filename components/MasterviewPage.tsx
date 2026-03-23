@@ -303,7 +303,7 @@ export function MasterviewPage() {
 
   // Copy a single TMDB ID
   const handleCopyId = async (id: number, rowId: string) => {
-    await copyText(String(id));
+    await copyText('tmdb:' + String(id));
     setCopiedId(rowId);
     toast(`Copied ID ${id}`, 'info');
     setTimeout(() => setCopiedId(null), 1200);
@@ -312,7 +312,7 @@ export function MasterviewPage() {
   // Copy all TMDB IDs
   const handleCopyAll = async () => {
     if (!requests.length) return;
-    const ids = requests.map((r) => String(r.tmdb_id)).join('\n');
+    const ids = requests.map((r) => 'tmdb:' + String(r.tmdb_id)).join('\n');
     await copyText(ids);
     toast(`Copied ${requests.length} TMDB ID${requests.length !== 1 ? 's' : ''}`, 'info');
   };
