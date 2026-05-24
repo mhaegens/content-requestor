@@ -563,6 +563,45 @@ tbody tr:hover td { background: var(--card-hover); }
   background: var(--success-bg);
 }
 
+/* ── Streaming Provider Selector ─────────────────────────── */
+.provider-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  margin-bottom: 1.25rem;
+}
+.provider-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.9rem 0.4rem 0.5rem;
+  border-radius: var(--r-sm);
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  color: var(--text-2);
+  font-size: 0.83rem;
+  font-weight: 500;
+  transition: all var(--t);
+}
+.provider-btn img {
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.provider-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.provider-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
 /* ── Notification Card Modal ─────────────────────────────── */
 .card-modal-overlay {
   position: fixed; inset: 0;
