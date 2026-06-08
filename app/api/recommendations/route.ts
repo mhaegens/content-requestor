@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTrending, discoverByProvider, getBelgianProviders } from '@/lib/tmdb';
+import {
+  getTrending,
+  getHighlyRated,
+  getNewReleases,
+  getRecommendationsFor,
+  discoverByProvider,
+  getBelgianProviders,
+} from '@/lib/tmdb';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -14,6 +21,24 @@ export async function GET(request: NextRequest) {
 
     if (tab === 'trending') {
       const results = await getTrending(mediaType);
+      return NextResponse.json({ results });
+    }
+
+    if (tab === 'highly_rated') {
+      const results = await getHighlyRated(mediaType);
+      return NextResponse.json({ results });
+    }
+
+    if (tab === 'new_releases') {
+      const results = await getNewReleases(mediaType);
+      return NextResponse.json({ results });
+    }
+
+    if (tab === 'because_liked') {
+      const tmdbId = parseInt(searchParams.get('tmdbId') ?? '0', 10);
+      const seedType: 'movie' | 'tv' = searchParams.get('seedType') === 'tv' ? 'tv' : 'movie';
+      if (!tmdbId) return NextResponse.json({ results: [] });
+      const results = await getRecommendationsFor(seedType, tmdbId);
       return NextResponse.json({ results });
     }
 
