@@ -24,9 +24,8 @@ services:
       - traefik.http.routers.requestr.rule=Host(`requests.haegens.be`)
       - traefik.http.routers.requestr.entryPoints=http
       - traefik.http.routers.requestr.service=requestr
+      - traefik.http.routers.requestr.priority=10
       - traefik.http.services.requestr.loadbalancer.server.port=3000
-      - traefik.http.middlewares.gzip.compress=true
-      - traefik.http.routers.requestr.middlewares=gzip
 
 volumes:
   requestr-data:
