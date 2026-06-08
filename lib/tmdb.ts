@@ -249,6 +249,7 @@ export async function discoverByProvider(
 }
 
 export async function getBelgianProviders(): Promise<WatchProvider[]> {
+  // TODO: TV mode could use /watch/providers/tv for a more accurate provider list
   const res = await fetch(
     `${BASE}/watch/providers/movie?language=en-US&watch_region=BE`,
     { headers: headers(), next: { revalidate: 86400 } },

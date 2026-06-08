@@ -25,11 +25,10 @@ interface RecentSeed {
 interface DiscoveryRowProps {
   fetchUrl: string;
   requestedIds: Set<number>;
-  mediaType: MediaType;
   onRequest: (item: SearchResult) => void;
 }
 
-function DiscoveryRow({ fetchUrl, requestedIds, mediaType, onRequest }: DiscoveryRowProps) {
+function DiscoveryRow({ fetchUrl, requestedIds, onRequest }: DiscoveryRowProps) {
   const [items, setItems] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -93,6 +92,10 @@ function PlatformRows({ providers, mediaType, requestedIds, onRequest }: Platfor
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    setVisibleProviders(new Set());
+  }, [mediaType]);
 
   if (providers.length === 0) return null;
 
@@ -310,7 +313,6 @@ export function RecommendationsPage() {
           <DiscoveryRow
             fetchUrl={`/api/recommendations?tab=trending&mediaType=${mediaType}`}
             requestedIds={requestedIds}
-            mediaType={mediaType}
             onRequest={handleRequest}
           />
         </div>
@@ -324,7 +326,6 @@ export function RecommendationsPage() {
           <DiscoveryRow
             fetchUrl={`/api/recommendations?tab=highly_rated&mediaType=${mediaType}`}
             requestedIds={requestedIds}
-            mediaType={mediaType}
             onRequest={handleRequest}
           />
         </div>
@@ -340,7 +341,6 @@ export function RecommendationsPage() {
           <DiscoveryRow
             fetchUrl={`/api/recommendations?tab=new_releases&mediaType=${mediaType}`}
             requestedIds={requestedIds}
-            mediaType={mediaType}
             onRequest={handleRequest}
           />
         </div>
@@ -353,11 +353,13 @@ export function RecommendationsPage() {
               <span className="discovery-row-subtitle" style={{ color: 'var(--accent)' }}>
                 &nbsp;{seed.title}
               </span>
+              <span className="discovery-row-subtitle">
+                &nbsp;·&nbsp;{seed.media_type === 'movie' ? 'movies' : 'TV shows'}
+              </span>
             </div>
             <DiscoveryRow
               fetchUrl={`/api/recommendations?tab=because_liked&tmdbId=${seed.tmdb_id}&seedType=${seed.media_type}`}
               requestedIds={requestedIds}
-              mediaType={mediaType}
               onRequest={handleRequest}
             />
           </div>
