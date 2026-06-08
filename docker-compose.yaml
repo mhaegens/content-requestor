@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      - TMDB_READ_TOKEN=${TMDB_READ_TOKEN}
+      - TMDB_READ_TOKEN
     volumes:
       - requestr-data:/app/data
     expose:
