@@ -170,6 +170,61 @@ export async function getTrending(
   return (data.results ?? []).slice(0, 20).map(normalise);
 }
 
+export async function getHighlyRated(
+  mediaType: 'movie' | 'tv',
+): Promise<SearchResult[]> {
+  const params = new URLSearchParams({
+    sort_by: 'popularity.desc',
+    'vote_average.gte': '7.5',
+    'vote_count.gte': '500',
+    language: 'en-US',
+    include_adult: 'false',
+    region: 'BE',
+  });
+  const res = await fetch(`${BASE}/discover/${mediaType}?${params}`, {
+    headers: headers(),
+    next: { revalidate: 3600 },
+  });
+  if (!res.ok) throw new Error(`TMDB highly rated error ${res.status}`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await res.json();
+  const normalise = mediaType === 'movie' ? normaliseMovie : normaliseTV;
+  return (data.results ?? []).slice(0, 20).map(normalise);
+}
+
+export async function getNewReleases(
+  mediaType: 'movie' | 'tv',
+): Promise<SearchResult[]> {
+  const endpoint =
+    mediaType === 'movie'
+      ? `${BASE}/movie/now_playing?language=en-US&region=BE`
+      : `${BASE}/tv/on_the_air?language=en-US`;
+  const res = await fetch(endpoint, {
+    headers: headers(),
+    next: { revalidate: 3600 },
+  });
+  if (!res.ok) throw new Error(`TMDB new releases error ${res.status}`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await res.json();
+  const normalise = mediaType === 'movie' ? normaliseMovie : normaliseTV;
+  return (data.results ?? []).slice(0, 20).map(normalise);
+}
+
+export async function getRecommendationsFor(
+  mediaType: 'movie' | 'tv',
+  tmdbId: number,
+): Promise<SearchResult[]> {
+  const res = await fetch(
+    `${BASE}/${mediaType}/${tmdbId}/recommendations?language=en-US`,
+    { headers: headers(), next: { revalidate: 3600 } },
+  );
+  if (!res.ok) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await res.json();
+  const normalise = mediaType === 'movie' ? normaliseMovie : normaliseTV;
+  return (data.results ?? []).slice(0, 20).map(normalise);
+}
+
 export async function discoverByProvider(
   mediaType: 'movie' | 'tv',
   providerId: number,
@@ -201,13 +256,9 @@ export async function getBelgianProviders(): Promise<WatchProvider[]> {
   if (!res.ok) return [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: any = await res.json();
-  // Keep only well-known streaming services available in Belgium
-  const STREAMING_IDS = new Set([8, 119, 337, 350, 2332, 2079, 2033, 531]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data.results ?? [])
-    .filter((p: any) => STREAMING_IDS.has(p.provider_id))
     .sort((a: any, b: any) => a.display_priority - b.display_priority)
-    .slice(0, 8)
     .map((p: any) => ({
       provider_id: p.provider_id,
       provider_name: p.provider_name,
