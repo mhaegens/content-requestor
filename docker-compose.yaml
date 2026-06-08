@@ -10,6 +10,8 @@ services:
       - requestr-data:/app/data
     expose:
       - "3000"
+    networks:
+      - coolify
     cap_drop:
       - ALL
     read_only: true
@@ -20,3 +22,7 @@ services:
 
 volumes:
   requestr-data:
+
+networks:
+  coolify:
+    external: true
