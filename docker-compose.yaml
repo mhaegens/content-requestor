@@ -8,8 +8,8 @@ services:
       - TMDB_READ_TOKEN=${TMDB_READ_TOKEN}
     volumes:
       - requestr-data:/app/data
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     cap_drop:
       - ALL
     read_only: true
