@@ -10,6 +10,8 @@ services:
       - requestr-data:/app/data
     expose:
       - "3000"
+    networks:
+      - coolify
     cap_drop:
       - ALL
     read_only: true
@@ -17,6 +19,18 @@ services:
       - /tmp:size=64m,mode=1777
     security_opt:
       - no-new-privileges:true
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.requestr.rule=Host(`requests.haegens.be`)
+      - traefik.http.routers.requestr.entryPoints=http
+      - traefik.http.routers.requestr.service=requestr
+      - traefik.http.services.requestr.loadbalancer.server.port=3000
+      - traefik.http.middlewares.gzip.compress=true
+      - traefik.http.routers.requestr.middlewares=gzip
 
 volumes:
   requestr-data:
+
+networks:
+  coolify:
+    external: true
