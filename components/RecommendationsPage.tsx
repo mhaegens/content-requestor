@@ -1,73 +1,235 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { SearchResult } from '@/types';
+import type { SearchResult, MediaType, Request } from '@/types';
 import type { WatchProvider } from '@/lib/tmdb';
 import { SearchCard } from './MediaCard';
-import { SkeletonGrid } from './SkeletonCard';
+import { SkeletonCard } from './SkeletonCard';
 import { useToast } from './ToastProvider';
 import { useNameModal, getStoredName } from './NameModal';
+
+// ---------------------------------------------------------------------------
+// Seed type for "Because You Liked" rows
+// ---------------------------------------------------------------------------
+
+interface RecentSeed {
+  tmdb_id: number;
+  title: string;
+  media_type: MediaType;
+}
+
+// ---------------------------------------------------------------------------
+// DiscoveryRow — self-contained row with its own fetch/filter/render
+// ---------------------------------------------------------------------------
+
+interface DiscoveryRowProps {
+  fetchUrl: string;
+  requestedIds: Set<number>;
+  onRequest: (item: SearchResult) => void;
+}
+
+function DiscoveryRow({ fetchUrl, requestedIds, onRequest }: DiscoveryRowProps) {
+  const [items, setItems] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(fetchUrl)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) {
+          setItems(data.results ?? []);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [fetchUrl]);
+
+  const visible = items.filter((i) => !requestedIds.has(i.tmdb_id));
+
+  if (!loading && visible.length === 0) return null;
+
+  return (
+    <div className="discovery-strip">
+      {loading
+        ? Array.from({ length: 6 }, (_, i) => <SkeletonCard key={i} />)
+        : visible.map((item) => (
+            <SearchCard
+              key={item.tmdb_id}
+              item={item}
+              isRequested={requestedIds.has(item.tmdb_id)}
+              onRequest={onRequest}
+            />
+          ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PlatformRows — renders provider rows and conditionally shows divider
+// ---------------------------------------------------------------------------
+
+interface PlatformRowsProps {
+  providers: WatchProvider[];
+  mediaType: MediaType;
+  requestedIds: Set<number>;
+  onRequest: (item: SearchResult) => void;
+}
+
+function PlatformRows({ providers, mediaType, requestedIds, onRequest }: PlatformRowsProps) {
+  // Track which provider rows have visible results to conditionally show divider
+  const [visibleProviders, setVisibleProviders] = useState<Set<number>>(new Set());
+
+  const handleRowVisible = useCallback((providerId: number, hasItems: boolean) => {
+    setVisibleProviders((prev) => {
+      const next = new Set(prev);
+      if (hasItems) next.add(providerId);
+      else next.delete(providerId);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    setVisibleProviders(new Set());
+  }, [mediaType]);
+
+  if (providers.length === 0) return null;
+
+  return (
+    <>
+      {visibleProviders.size > 0 && (
+        <div className="discovery-platform-divider">
+          <span>Streaming Platforms</span>
+        </div>
+      )}
+      {providers.map((p) => (
+        <PlatformRow
+          key={p.provider_id}
+          provider={p}
+          mediaType={mediaType}
+          requestedIds={requestedIds}
+          onRequest={onRequest}
+          onVisibilityChange={handleRowVisible}
+        />
+      ))}
+    </>
+  );
+}
+
+interface PlatformRowProps {
+  provider: WatchProvider;
+  mediaType: MediaType;
+  requestedIds: Set<number>;
+  onRequest: (item: SearchResult) => void;
+  onVisibilityChange: (providerId: number, hasItems: boolean) => void;
+}
+
+function PlatformRow({ provider, mediaType, requestedIds, onRequest, onVisibilityChange }: PlatformRowProps) {
+  const [items, setItems] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const onVisibilityChangeRef = useRef(onVisibilityChange);
+  onVisibilityChangeRef.current = onVisibilityChange;
+
+  const fetchUrl = `/api/recommendations?tab=platform&mediaType=${mediaType}&providerId=${provider.provider_id}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(fetchUrl)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) {
+          setItems(data.results ?? []);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [fetchUrl]);
+
+  const visible = items.filter((i) => !requestedIds.has(i.tmdb_id));
+
+  useEffect(() => {
+    if (!loading) onVisibilityChangeRef.current(provider.provider_id, visible.length > 0);
+  }, [loading, visible.length, provider.provider_id]);
+
+  if (!loading && visible.length === 0) return null;
+
+  return (
+    <div className="discovery-section">
+      <div className="discovery-platform-logo">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`https://image.tmdb.org/t/p/original${provider.logo_path}`}
+          alt={provider.provider_name}
+          width={20}
+          height={20}
+        />
+        <span>{provider.provider_name}</span>
+      </div>
+      <div className="discovery-strip">
+        {loading
+          ? Array.from({ length: 6 }, (_, i) => <SkeletonCard key={i} />)
+          : visible.map((item) => (
+              <SearchCard
+                key={item.tmdb_id}
+                item={item}
+                isRequested={requestedIds.has(item.tmdb_id)}
+                onRequest={onRequest}
+              />
+            ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RecommendationsPage
+// ---------------------------------------------------------------------------
 
 export function RecommendationsPage() {
   const { toast } = useToast();
   const { openModal } = useNameModal();
 
-  const [tab, setTab] = useState<'trending' | 'platform'>('trending');
-  const [mediaType, setMediaType] = useState<'movie' | 'tv'>('movie');
-  const [providers, setProviders] = useState<WatchProvider[]>([]);
-  const [selectedProvider, setSelectedProvider] = useState<number | null>(null);
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [mediaType, setMediaType] = useState<MediaType>('movie');
   const [requestedIds, setRequestedIds] = useState<Set<number>>(new Set());
+  const [recentSeeds, setRecentSeeds] = useState<RecentSeed[]>([]);
+  const [providers, setProviders] = useState<WatchProvider[]>([]);
   const pendingRef = useRef<Set<number>>(new Set());
-  const initialProviderSet = useRef(false);
 
+  // Load requested IDs + derive recent seeds from wishlist
   useEffect(() => {
     fetch('/api/requests')
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data.requests)) {
-          setRequestedIds(new Set(data.requests.map((r: { tmdb_id: number }) => r.tmdb_id)));
+          const requests: Request[] = data.requests;
+          setRequestedIds(new Set(requests.map((r) => r.tmdb_id)));
+          setRecentSeeds(
+            requests.slice(0, 3).map((r) => ({
+              tmdb_id: r.tmdb_id,
+              title: r.title,
+              media_type: r.media_type,
+            })),
+          );
         }
       })
       .catch(() => {});
   }, []);
 
+  // Load all Belgian providers once
   useEffect(() => {
     fetch('/api/recommendations?tab=providers')
       .then((r) => r.json())
-      .then((data) => {
-        const provs: WatchProvider[] = data.providers ?? [];
-        setProviders(provs);
-        if (!initialProviderSet.current && provs.length) {
-          setSelectedProvider(provs[0].provider_id);
-          initialProviderSet.current = true;
-        }
-      })
+      .then((data) => setProviders(data.providers ?? []))
       .catch(() => {});
   }, []);
-
-  const fetchResults = useCallback(async () => {
-    if (tab === 'platform' && selectedProvider === null) return;
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ tab, mediaType });
-      if (tab === 'platform' && selectedProvider !== null) {
-        params.set('providerId', String(selectedProvider));
-      }
-      const res = await fetch(`/api/recommendations?${params}`);
-      const data = await res.json();
-      setResults(data.results ?? []);
-    } catch {
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [tab, mediaType, selectedProvider]);
-
-  useEffect(() => {
-    fetchResults();
-  }, [fetchResults]);
 
   const handleRequest = useCallback(
     async (item: SearchResult) => {
@@ -98,16 +260,9 @@ export function RecommendationsPage() {
         });
 
         let data: Record<string, unknown> = {};
-        try {
-          data = await res.json();
-        } catch {
-          throw new Error(`HTTP ${res.status}`);
-        }
+        try { data = await res.json(); } catch { throw new Error(`HTTP ${res.status}`); }
 
-        if (res.status === 409) {
-          toast('Already in the wish list!', 'info');
-          return;
-        }
+        if (res.status === 409) { toast('Already in the wish list!', 'info'); return; }
         if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : `HTTP ${res.status}`);
         toast(`"${item.title}" added to wish list!`, 'success');
       } catch {
@@ -124,65 +279,17 @@ export function RecommendationsPage() {
     [openModal, toast],
   );
 
-  const activeProvider = providers.find((p) => p.provider_id === selectedProvider);
-
   return (
     <main className="main">
       <div className="container">
         <section className="hero">
           <div className="hero-eyebrow">Belgium</div>
-          <h1>Trending &amp; Streaming</h1>
-          <p className="hero-sub">
-            Popular movies and shows on Belgian streaming platforms right now.
-          </p>
+          <h1>Discover</h1>
+          <p className="hero-sub">What to watch next.</p>
         </section>
 
-        {/* Tab switcher */}
-        <div className="filter-row" style={{ marginBottom: '1.25rem' }}>
-          <button
-            className={`pill${tab === 'trending' ? ' active' : ''}`}
-            onClick={() => setTab('trending')}
-          >
-            Trending
-          </button>
-          <button
-            className={`pill${tab === 'platform' ? ' active' : ''}`}
-            onClick={() => setTab('platform')}
-          >
-            By Platform
-          </button>
-        </div>
-
-        {/* Platform selector */}
-        {tab === 'platform' && (
-          <div className="provider-grid">
-            {providers.length === 0 ? (
-              <p style={{ color: 'var(--text-3)', fontSize: '0.875rem' }}>Loading platforms…</p>
-            ) : (
-              providers.map((p) => (
-                <button
-                  key={p.provider_id}
-                  className={`provider-btn${selectedProvider === p.provider_id ? ' active' : ''}`}
-                  onClick={() => setSelectedProvider(p.provider_id)}
-                  title={p.provider_name}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={`https://image.tmdb.org/t/p/original${p.logo_path}`}
-                    alt={p.provider_name}
-                    width={28}
-                    height={28}
-                  />
-                  <span>{p.provider_name}</span>
-                </button>
-              ))
-            )}
-          </div>
-        )}
-
-        {/* Media type filter */}
-        <div className="filter-row" style={{ marginBottom: '1.5rem' }}>
-          <span className="filter-label">Type:</span>
+        {/* Global media type toggle */}
+        <div className="filter-row" style={{ marginBottom: '1.75rem' }}>
           <button
             className={`pill${mediaType === 'movie' ? ' active' : ''}`}
             onClick={() => setMediaType('movie')}
@@ -197,52 +304,74 @@ export function RecommendationsPage() {
           </button>
         </div>
 
-        {/* Section header */}
-        <div className="section-header">
-          <div className="section-title">
-            <h2>
-              {tab === 'trending'
-                ? `Trending ${mediaType === 'movie' ? 'Movies' : 'TV Shows'} in Belgium`
-                : `${activeProvider?.provider_name ?? ''} — ${mediaType === 'movie' ? 'Movies' : 'TV Shows'}`}
-            </h2>
-            {!loading && <span className="count-chip">{results.length}</span>}
+        {/* Trending */}
+        <div className="discovery-section">
+          <div className="discovery-row-header">
+            <span className="discovery-row-title">Trending This Week</span>
+            <span className="discovery-row-subtitle">· in Belgium</span>
           </div>
-          <span style={{ fontSize: '0.82rem', color: 'var(--text-3)' }}>Powered by TMDB</span>
+          <DiscoveryRow
+            fetchUrl={`/api/recommendations?tab=trending&mediaType=${mediaType}`}
+            requestedIds={requestedIds}
+            onRequest={handleRequest}
+          />
         </div>
 
-        {/* Results */}
-        {loading ? (
-          <SkeletonGrid count={12} />
-        ) : results.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.5}
-                style={{ width: 52, height: 52, opacity: 0.4 }}
-              >
-                <rect x="2" y="7" width="20" height="15" rx="2" />
-                <polyline points="17 2 12 7 7 2" />
-              </svg>
+        {/* Highly Rated */}
+        <div className="discovery-section">
+          <div className="discovery-row-header">
+            <span className="discovery-row-title">Highly Rated</span>
+            <span className="discovery-row-subtitle">· ★ 7.5+ · popular now</span>
+          </div>
+          <DiscoveryRow
+            fetchUrl={`/api/recommendations?tab=highly_rated&mediaType=${mediaType}`}
+            requestedIds={requestedIds}
+            onRequest={handleRequest}
+          />
+        </div>
+
+        {/* New Releases */}
+        <div className="discovery-section">
+          <div className="discovery-row-header">
+            <span className="discovery-row-title">New Releases</span>
+            <span className="discovery-row-subtitle">
+              {mediaType === 'movie' ? '· in cinemas now' : '· currently airing'}
+            </span>
+          </div>
+          <DiscoveryRow
+            fetchUrl={`/api/recommendations?tab=new_releases&mediaType=${mediaType}`}
+            requestedIds={requestedIds}
+            onRequest={handleRequest}
+          />
+        </div>
+
+        {/* Because You Liked — hidden when wishlist empty */}
+        {recentSeeds.map((seed) => (
+          <div key={seed.tmdb_id} className="discovery-section">
+            <div className="discovery-row-header">
+              <span className="discovery-row-title">Because You Liked</span>
+              <span className="discovery-row-subtitle" style={{ color: 'var(--accent)' }}>
+                &nbsp;{seed.title}
+              </span>
+              <span className="discovery-row-subtitle">
+                &nbsp;·&nbsp;{seed.media_type === 'movie' ? 'movies' : 'TV shows'}
+              </span>
             </div>
-            <h3>Nothing found</h3>
-            <p>Try switching the type or platform.</p>
+            <DiscoveryRow
+              fetchUrl={`/api/recommendations?tab=because_liked&tmdbId=${seed.tmdb_id}&seedType=${seed.media_type}`}
+              requestedIds={requestedIds}
+              onRequest={handleRequest}
+            />
           </div>
-        ) : (
-          <div className="cards-grid">
-            {results.map((item) => (
-              <SearchCard
-                key={item.tmdb_id}
-                item={item}
-                isRequested={requestedIds.has(item.tmdb_id)}
-                onRequest={handleRequest}
-              />
-            ))}
-          </div>
-        )}
+        ))}
+
+        {/* Per-provider rows with conditional divider */}
+        <PlatformRows
+          providers={providers}
+          mediaType={mediaType}
+          requestedIds={requestedIds}
+          onRequest={handleRequest}
+        />
       </div>
     </main>
   );
