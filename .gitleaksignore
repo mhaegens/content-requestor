@@ -1,0 +1,7 @@
+# Historical installation examples contain deliberately truncated JWT strings
+# (literal ellipses / "your full ... token here"), not usable credentials.
+# Allow only these exact findings; new secrets in install.md are still scanned.
+4a511dee8ec394365d54d853508e8cf23584eeab:install.md:generic-api-key:48
+4a511dee8ec394365d54d853508e8cf23584eeab:install.md:generic-api-key:80
+4a511dee8ec394365d54d853508e8cf23584eeab:install.md:generic-api-key:377
+4a511dee8ec394365d54d853508e8cf23584eeab:install.md:generic-api-key:379

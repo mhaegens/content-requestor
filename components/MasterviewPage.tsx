@@ -272,6 +272,9 @@ async function generateCardImage(request: Request): Promise<Blob> {
 export function MasterviewPage() {
   const { toast } = useToast();
 
+  const [adminKey, setAdminKey] = useState('');
+  const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
+  const sendingRef = useRef<Set<string>>(new Set());
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -299,7 +302,30 @@ export function MasterviewPage() {
     }
   }, []);
 
-  useEffect(() => { loadRequests(); }, [loadRequests]);
+  useEffect(() => {
+    setAdminKey(sessionStorage.getItem('requestr-admin-key') ?? '');
+    loadRequests();
+  }, [loadRequests]);
+
+  const adminHeaders = { Authorization: `Bearer ${adminKey}` };
+
+  const handleApprove = async (item: Request) => {
+    if (sendingRef.current.has(item.id)) return;
+    sendingRef.current.add(item.id);
+    setSendingIds((previous) => new Set(previous).add(item.id));
+    try {
+      const response = await fetch(`/api/requests/${item.id}/approve`, { method: 'POST', headers: adminHeaders });
+      const data = await response.json();
+      if (data.request) setRequests((previous) => previous.map((row) => row.id === item.id ? data.request : row));
+      if (!response.ok) throw new Error(data.error ?? 'Approval failed');
+      toast(data.request.available_in_jellyfin ? 'Already available in Jellyfin' : `Sent to ${item.media_type === 'movie' ? 'Radarr' : 'Sonarr'}`, 'success');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Approval failed. Please retry.', 'danger');
+    } finally {
+      sendingRef.current.delete(item.id);
+      setSendingIds((previous) => { const next = new Set(previous); next.delete(item.id); return next; });
+    }
+  };
 
   // Copy a single TMDB ID
   const handleCopyId = async (id: number, rowId: string) => {
@@ -324,7 +350,7 @@ export function MasterviewPage() {
     try {
       const res = await fetch(`/api/requests/${r.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...adminHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({ available_in_jellyfin: newValue }),
       });
       if (!res.ok) throw new Error('Update failed');
@@ -396,8 +422,8 @@ export function MasterviewPage() {
   // Delete a single request
   const handleDelete = async (id: string, title: string) => {
     try {
-      const res = await fetch(`/api/requests/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Delete failed');
+      const res = await fetch(`/api/requests/${id}`, { method: 'DELETE', headers: adminHeaders });
+      if (!res.ok) { const data = await res.json(); throw new Error(data.error ?? 'Delete failed'); }
       setRequests((prev) => prev.filter((r) => r.id !== id));
       toast(`Removed "${title}"`, 'danger');
     } catch {
@@ -409,10 +435,10 @@ export function MasterviewPage() {
   const handleClearAll = async () => {
     setShowConfirm(false);
     try {
-      const res = await fetch('/api/requests', { method: 'DELETE' });
+      const res = await fetch('/api/requests', { method: 'DELETE', headers: adminHeaders });
       if (!res.ok) throw new Error('Clear failed');
-      setRequests([]);
-      toast('All requests cleared.', 'danger');
+      await loadRequests();
+      toast('Requests cleared. Active transfers are kept.', 'info');
     } catch {
       toast('Failed to clear requests.', 'danger');
     }
@@ -434,9 +460,18 @@ export function MasterviewPage() {
           <div>
             <h2>Admin Panel</h2>
             <p style={{ color: 'var(--text-2)' }}>
-              This page is not linked publicly. Use the TMDB IDs below to action requests in Jellyfin.
+              Approve requests to send movies to Radarr and TV shows to Sonarr.
             </p>
           </div>
+        </div>
+
+        <div className="admin-key-row">
+          <label htmlFor="admin-key">Admin key</label>
+          <input id="admin-key" type="password" className="modal-input" autoComplete="off" placeholder="Enter your admin key to manage requests" value={adminKey} onChange={(event) => {
+            setAdminKey(event.target.value);
+            sessionStorage.setItem('requestr-admin-key', event.target.value);
+          }} />
+          <button className="btn btn-outline btn-sm" onClick={() => { setAdminKey(''); sessionStorage.removeItem('requestr-admin-key'); }}>Lock</button>
         </div>
 
         {/* Stats */}
@@ -474,7 +509,7 @@ export function MasterviewPage() {
             <button
               className="btn btn-danger btn-sm"
               onClick={() => setShowConfirm(true)}
-              disabled={!requests.length}
+              disabled={!requests.length || !adminKey}
             >
               <TrashIcon />
               Clear All
@@ -567,8 +602,9 @@ export function MasterviewPage() {
                       {/* Jellyfin Status */}
                       <td>
                         <span className={`jellyfin-status-badge${r.available_in_jellyfin ? ' available' : ''}`}>
-                          {r.available_in_jellyfin ? 'In Jellyfin' : 'Pending'}
+                          {r.available_in_jellyfin ? 'In Jellyfin' : r.delivery_status === 'sent' ? `Sent to ${r.media_type === 'movie' ? 'Radarr' : 'Sonarr'}` : r.delivery_status === 'failed' ? 'Send failed' : r.delivery_status === 'sending' ? 'Sending…' : 'Awaiting approval'}
                         </span>
+                        {r.delivery_error && <small className="delivery-error">{r.delivery_error}</small>}
                       </td>
 
                       {/* TMDB ID */}
@@ -587,10 +623,15 @@ export function MasterviewPage() {
                       {/* Actions */}
                       <td>
                         <div className="td-actions">
+                          {!r.available_in_jellyfin && r.delivery_status !== 'sent' && (
+                            <button className="btn btn-primary btn-sm" onClick={() => handleApprove(r)} disabled={!adminKey || sendingIds.has(r.id)}>
+                              {sendingIds.has(r.id) ? 'Sending…' : r.delivery_status === 'failed' || r.delivery_status === 'sending' ? 'Retry' : 'Approve'}
+                            </button>
+                          )}
                           <button
                             className={`btn btn-sm${r.available_in_jellyfin ? ' btn-success' : ' btn-outline'}`}
                             onClick={() => handleToggleJellyfin(r)}
-                            disabled={togglingId === r.id}
+                            disabled={!adminKey || togglingId === r.id || sendingIds.has(r.id)}
                             title={r.available_in_jellyfin ? 'Mark as pending' : 'Mark as available in Jellyfin'}
                           >
                             <JellyfinIcon filled={r.available_in_jellyfin} />
@@ -616,6 +657,7 @@ export function MasterviewPage() {
                           <button
                             className="btn-icon-only"
                             onClick={() => handleDelete(r.id, r.title)}
+                            disabled={!adminKey || sendingIds.has(r.id)}
                             title="Remove this request"
                           >
                             <TrashIcon />

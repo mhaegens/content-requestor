@@ -1,6 +1,7 @@
 'use client';
 
 import type { SearchResult, Request } from '@/types';
+import { useState } from 'react';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,6 +58,7 @@ interface SearchCardProps {
   item: SearchResult;
   isRequested: boolean;
   onRequest: (item: SearchResult) => void;
+  compact?: boolean;
 }
 
 interface WishlistCardProps {
@@ -67,24 +69,25 @@ interface WishlistCardProps {
 // Search result card
 // ---------------------------------------------------------------------------
 
-export function SearchCard({ item, isRequested, onRequest }: SearchCardProps) {
+export function SearchCard({ item, isRequested, onRequest, compact = false }: SearchCardProps) {
+  const [failed, setFailed] = useState(false);
   const posterSrc = item.poster_path
-    ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
+    ? `https://image.tmdb.org/t/p/${compact ? 'w185' : 'w342'}${item.poster_path}`
     : null;
 
   return (
     <div className="card" data-id={item.tmdb_id}>
       <div className="card-poster">
-        {posterSrc ? (
+        {posterSrc && !failed ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={posterSrc}
             alt={item.title}
             loading="lazy"
-            onError={(e) => {
-              const el = e.currentTarget.parentElement;
-              if (el) el.innerHTML = '<div class="poster-placeholder"><span>No poster</span></div>';
-            }}
+            decoding="async"
+            width={compact ? 185 : 342}
+            height={compact ? 278 : 513}
+            onError={() => setFailed(true)}
           />
         ) : (
           <PosterPlaceholder />
@@ -102,7 +105,11 @@ export function SearchCard({ item, isRequested, onRequest }: SearchCardProps) {
         <div className="card-year">{item.year}</div>
         <div className="card-overview">{item.overview}</div>
         <div className="card-action">
-          {isRequested ? (
+          {item.availability === 'available' ? (
+            <button className="btn btn-success btn-full" disabled><CheckIcon />In Jellyfin</button>
+          ) : item.availability === 'unknown' ? (
+            <button className="btn btn-outline btn-full" disabled title="The library could not be checked. Please try again shortly.">Library unavailable</button>
+          ) : isRequested ? (
             <button className="btn btn-success btn-full" disabled>
               <CheckIcon />
               Already Requested
@@ -126,23 +133,24 @@ export function SearchCard({ item, isRequested, onRequest }: SearchCardProps) {
 // ---------------------------------------------------------------------------
 
 export function WishlistCard({ item }: WishlistCardProps) {
+  const [failed, setFailed] = useState(false);
   const posterSrc = item.poster_path
-    ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
+    ? `https://image.tmdb.org/t/p/w342${item.poster_path}`
     : null;
 
   return (
     <div className="card" data-id={item.tmdb_id}>
       <div className="card-poster">
-        {posterSrc ? (
+        {posterSrc && !failed ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={posterSrc}
             alt={item.title}
             loading="lazy"
-            onError={(e) => {
-              const el = e.currentTarget.parentElement;
-              if (el) el.innerHTML = '<div class="poster-placeholder"><span>No poster</span></div>';
-            }}
+            decoding="async"
+            width={342}
+            height={513}
+            onError={() => setFailed(true)}
           />
         ) : (
           <PosterPlaceholder />

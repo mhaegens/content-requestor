@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { SearchResult } from '@/types';
+import { mediaKey, type SearchResult, type Request as MediaRequest } from '@/types';
 import { SearchCard } from './MediaCard';
 import { SkeletonGrid } from './SkeletonCard';
 import { useToast } from './ToastProvider';
@@ -16,21 +16,21 @@ export function SearchPage() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [results, setResults] = useState<SearchResult[]>([]);
-  const [requestedIds, setRequestedIds] = useState<Set<number>>(new Set());
+  const [requestedIds, setRequestedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // Tracks in-flight request submissions to prevent duplicate concurrent POSTs.
-  const pendingRef = useRef<Set<number>>(new Set());
+  const pendingRef = useRef<Set<string>>(new Set());
 
   // Load already-requested TMDB IDs on mount
   useEffect(() => {
-    fetch('/api/requests')
+    fetch('/api/requests?summary=true')
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data.requests)) {
-          setRequestedIds(new Set(data.requests.map((r: { tmdb_id: number }) => r.tmdb_id)));
+          setRequestedIds(new Set(data.requests.map((r: MediaRequest) => mediaKey(r))));
         }
       })
       .catch(() => {/* non-critical */});
@@ -66,11 +66,11 @@ export function SearchPage() {
       }
 
       // Prevent duplicate concurrent submissions for the same item.
-      if (pendingRef.current.has(item.tmdb_id)) return;
-      pendingRef.current.add(item.tmdb_id);
+      if (pendingRef.current.has(mediaKey(item))) return;
+      pendingRef.current.add(mediaKey(item));
 
       // Optimistic update
-      setRequestedIds((prev) => new Set(prev).add(item.tmdb_id));
+      setRequestedIds((prev) => new Set(prev).add(mediaKey(item)));
 
       try {
         const res = await fetch('/api/requests', {
@@ -99,8 +99,10 @@ export function SearchPage() {
         }
 
         if (res.status === 409) {
-          // Item is already in the wishlist — keep optimistic state, just inform.
-          toast('Already in the wish list!', 'info');
+          if (data.available) {
+            setResults((previous) => previous.map((result) => mediaKey(result) === mediaKey(item) ? { ...result, availability: 'available' } : result));
+          }
+          toast(data.available ? 'Already available in Jellyfin!' : 'Already in the wish list!', 'info');
           return;
         }
         if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : `HTTP ${res.status}`);
@@ -111,12 +113,12 @@ export function SearchPage() {
         // Roll back optimistic update
         setRequestedIds((prev) => {
           const next = new Set(prev);
-          next.delete(item.tmdb_id);
+          next.delete(mediaKey(item));
           return next;
         });
         toast('Failed to add request. Please try again.', 'danger');
       } finally {
-        pendingRef.current.delete(item.tmdb_id);
+        pendingRef.current.delete(mediaKey(item));
       }
     },
     [openModal, toast],
@@ -223,9 +225,9 @@ export function SearchPage() {
               <div className="cards-grid">
                 {filtered.map((item) => (
                   <SearchCard
-                    key={item.tmdb_id}
+                    key={mediaKey(item)}
                     item={item}
-                    isRequested={requestedIds.has(item.tmdb_id)}
+                    isRequested={requestedIds.has(mediaKey(item))}
                     onRequest={handleRequest}
                   />
                 ))}

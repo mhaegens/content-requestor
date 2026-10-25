@@ -14,11 +14,13 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import type { Request } from '@/types';
 
+type NewRequest = Pick<Request, 'tmdb_id' | 'media_type' | 'title' | 'year' | 'poster_path' | 'overview' | 'vote_average' | 'requested_by'>;
+
 // ---------------------------------------------------------------------------
 // Initialise
 // ---------------------------------------------------------------------------
 
-const DB_DIR = path.join(process.cwd(), 'data');
+const DB_DIR = process.env.REQUESTR_DATA_DIR ?? path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DB_DIR, 'requests.db');
 
 // Ensure the data directory exists (created automatically on first run)
@@ -40,6 +42,7 @@ const db: Database.Database =
 global._requestrDb = db;
 
 // Performance & safety pragmas
+db.pragma('busy_timeout = 10000');
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
 db.pragma('foreign_keys = ON');
@@ -48,29 +51,54 @@ db.pragma('foreign_keys = ON');
 // Schema
 // ---------------------------------------------------------------------------
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS requests (
-    id                    TEXT PRIMARY KEY,
-    tmdb_id               INTEGER NOT NULL UNIQUE,
-    media_type            TEXT    NOT NULL CHECK(media_type IN ('movie','tv')),
-    title                 TEXT    NOT NULL,
-    year                  TEXT,
-    poster_path           TEXT,
-    overview              TEXT,
-    vote_average          REAL    DEFAULT 0,
-    requested_by          TEXT    NOT NULL DEFAULT 'Anonymous',
-    requested_at          TEXT    NOT NULL,
-    available_in_jellyfin INTEGER NOT NULL DEFAULT 0
+// Migrate the original table in a transaction so a movie and a TV series may
+// share a numeric TMDB ID without colliding. Existing requests remain intact.
+const schema = `
+  CREATE TABLE requests (
+    id TEXT PRIMARY KEY,
+    tmdb_id INTEGER NOT NULL,
+    media_type TEXT NOT NULL CHECK(media_type IN ('movie','tv')),
+    title TEXT NOT NULL,
+    year TEXT,
+    poster_path TEXT,
+    overview TEXT,
+    vote_average REAL DEFAULT 0,
+    requested_by TEXT NOT NULL DEFAULT 'Anonymous',
+    requested_at TEXT NOT NULL,
+    available_in_jellyfin INTEGER NOT NULL DEFAULT 0,
+    delivery_status TEXT NOT NULL DEFAULT 'pending',
+    delivery_error TEXT,
+    external_id INTEGER,
+    approved_at TEXT,
+    delivery_started_at TEXT,
+    UNIQUE(tmdb_id, media_type)
   );
-  CREATE INDEX IF NOT EXISTS idx_requested_at ON requests(requested_at DESC);
-`);
+`;
 
-// Idempotent migration: add column to existing databases
-try {
-  db.exec(`ALTER TABLE requests ADD COLUMN available_in_jellyfin INTEGER NOT NULL DEFAULT 0`);
-} catch {
-  // Column already exists — safe to ignore
-}
+db.transaction(() => {
+  const table = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'requests'").get() as { sql: string } | undefined;
+  if (!table) {
+    db.exec(schema);
+  } else {
+    const columns = new Set((db.pragma('table_info(requests)') as { name: string }[]).map((column) => column.name));
+    const additions: Record<string, string> = {
+      available_in_jellyfin: 'INTEGER NOT NULL DEFAULT 0',
+      delivery_status: "TEXT NOT NULL DEFAULT 'pending'",
+      delivery_error: 'TEXT', external_id: 'INTEGER', approved_at: 'TEXT', delivery_started_at: 'TEXT',
+    };
+    for (const [name, definition] of Object.entries(additions)) {
+      if (!columns.has(name)) db.exec(`ALTER TABLE requests ADD COLUMN ${name} ${definition}`);
+    }
+    if (/tmdb_id\s+INTEGER\s+NOT NULL\s+UNIQUE/i.test(table.sql)) {
+      db.exec('ALTER TABLE requests RENAME TO requests_legacy');
+      db.exec(schema);
+      const fields = 'id, tmdb_id, media_type, title, year, poster_path, overview, vote_average, requested_by, requested_at, available_in_jellyfin, delivery_status, delivery_error, external_id, approved_at, delivery_started_at';
+      db.exec(`INSERT INTO requests (${fields}) SELECT ${fields} FROM requests_legacy`);
+      db.exec('DROP TABLE requests_legacy');
+    }
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_requested_at ON requests(requested_at DESC)');
+}).immediate();
 
 // ---------------------------------------------------------------------------
 // Queries
@@ -81,8 +109,8 @@ const stmts = {
     'SELECT * FROM requests ORDER BY requested_at DESC',
   ),
   getById: db.prepare<[string], Request>('SELECT * FROM requests WHERE id = ?'),
-  findByTmdb: db.prepare<[number], { id: string }>(
-    'SELECT id FROM requests WHERE tmdb_id = ?',
+  findByTmdb: db.prepare<[number, string], { id: string }>(
+    'SELECT id FROM requests WHERE tmdb_id = ? AND media_type = ?',
   ),
   insert: db.prepare(`
     INSERT INTO requests
@@ -90,8 +118,8 @@ const stmts = {
     VALUES
       (@id, @tmdb_id, @media_type, @title, @year, @poster_path, @overview, @vote_average, @requested_by, @requested_at)
   `),
-  deleteOne: db.prepare<[string]>('DELETE FROM requests WHERE id = ?'),
-  deleteAll: db.prepare('DELETE FROM requests'),
+  deleteOne: db.prepare<[string]>("DELETE FROM requests WHERE id = ? AND delivery_status != 'sending'"),
+  deleteAll: db.prepare("DELETE FROM requests WHERE delivery_status != 'sending'"),
   setJellyfinFlag: db.prepare<[number, string]>(
     'UPDATE requests SET available_in_jellyfin = ? WHERE id = ?',
   ),
@@ -111,13 +139,14 @@ export function getAllRequests(): Request[] {
 // check and then the second one throws a UNIQUE constraint violation (which
 // would surface as a 500 instead of a clean 409).
 const insertIfNew = db.transaction(
-  (data: Omit<Request, 'id' | 'requested_at' | 'available_in_jellyfin'>): Request | null => {
-    if (stmts.findByTmdb.get(data.tmdb_id)) return null; // duplicate
+  (data: NewRequest): Request | null => {
+    if (stmts.findByTmdb.get(data.tmdb_id, data.media_type)) return null; // duplicate
     const row: Request = {
       ...data,
       id: uuidv4(),
       requested_at: new Date().toISOString(),
       available_in_jellyfin: false,
+      delivery_status: 'pending', delivery_error: null, external_id: null, approved_at: null, delivery_started_at: null,
     };
     stmts.insert.run(row);
     return row;
@@ -125,7 +154,7 @@ const insertIfNew = db.transaction(
 );
 
 export function addRequest(
-  data: Omit<Request, 'id' | 'requested_at' | 'available_in_jellyfin'>,
+  data: NewRequest,
 ): Request | null {
   try {
     return insertIfNew(data);
@@ -146,8 +175,12 @@ export function clearAllRequests(): number {
   return stmts.deleteAll.run().changes;
 }
 
-export function isRequested(tmdbId: number): boolean {
-  return !!stmts.findByTmdb.get(tmdbId);
+export function isRequested(tmdbId: number, mediaType: 'movie' | 'tv'): boolean {
+  return !!stmts.findByTmdb.get(tmdbId, mediaType);
+}
+
+export function isMarkedAvailable(tmdbId: number, mediaType: 'movie' | 'tv'): boolean {
+  return Boolean(db.prepare('SELECT 1 FROM requests WHERE tmdb_id = ? AND media_type = ? AND available_in_jellyfin = 1').get(tmdbId, mediaType));
 }
 
 export function setJellyfinAvailable(id: string, available: boolean): boolean {
@@ -183,4 +216,26 @@ export function getRequestStats(since: string) {
     in_jellyfin: row.in_jellyfin ?? 0,
     new_count:   row.new_count   ?? 0,
   };
+}
+
+export function getRequest(id: string): Request | null {
+  const row = stmts.getById.get(id);
+  return row ? { ...row, available_in_jellyfin: Boolean(row.available_in_jellyfin) } : null;
+}
+
+/** A persisted lease prevents double-clicks and concurrent server processes. */
+export function claimDelivery(id: string): boolean {
+  return db.prepare(`UPDATE requests SET delivery_status = 'sending', delivery_error = NULL, delivery_started_at = ?
+    WHERE id = ? AND (delivery_status IN ('pending', 'failed') OR
+      (delivery_status = 'sending' AND delivery_started_at < ?))`)
+    .run(new Date().toISOString(), id, new Date(Date.now() - 120000).toISOString()).changes > 0;
+}
+
+export function finishDelivery(id: string, externalId: number): void {
+  db.prepare(`UPDATE requests SET delivery_status = 'sent', delivery_error = NULL, external_id = ?, approved_at = ? WHERE id = ?`)
+    .run(externalId, new Date().toISOString(), id);
+}
+
+export function failDelivery(id: string, message: string): void {
+  db.prepare("UPDATE requests SET delivery_status = 'failed', delivery_error = ? WHERE id = ?").run(message, id);
 }

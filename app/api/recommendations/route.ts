@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withAvailability } from '@/lib/jellyfin';
 import {
   getTrending,
   getHighlyRated,
@@ -21,17 +22,17 @@ export async function GET(request: NextRequest) {
 
     if (tab === 'trending') {
       const results = await getTrending(mediaType);
-      return NextResponse.json({ results });
+      return NextResponse.json({ results: await withAvailability(results) });
     }
 
     if (tab === 'highly_rated') {
       const results = await getHighlyRated(mediaType);
-      return NextResponse.json({ results });
+      return NextResponse.json({ results: await withAvailability(results) });
     }
 
     if (tab === 'new_releases') {
       const results = await getNewReleases(mediaType);
-      return NextResponse.json({ results });
+      return NextResponse.json({ results: await withAvailability(results) });
     }
 
     if (tab === 'because_liked') {
@@ -39,14 +40,14 @@ export async function GET(request: NextRequest) {
       const seedType: 'movie' | 'tv' = searchParams.get('seedType') === 'tv' ? 'tv' : 'movie';
       if (!tmdbId) return NextResponse.json({ results: [] });
       const results = await getRecommendationsFor(seedType, tmdbId);
-      return NextResponse.json({ results });
+      return NextResponse.json({ results: await withAvailability(results) });
     }
 
     if (tab === 'platform') {
       const providerId = parseInt(searchParams.get('providerId') ?? '0', 10);
       if (!providerId) return NextResponse.json({ results: [] });
       const results = await discoverByProvider(mediaType, providerId);
-      return NextResponse.json({ results });
+      return NextResponse.json({ results: await withAvailability(results) });
     }
 
     return NextResponse.json({ results: [] });
