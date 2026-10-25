@@ -735,3 +735,28 @@ tbody tr:hover td { background: var(--card-hover); }
   text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--text-1);
 }
+
+/* Discovery work stays bounded on phones, including touch-only devices. */
+.discovery-row-header { flex-wrap: wrap; }
+.discovery-pagination { display: flex; align-items: center; gap: .75rem; margin-top: .5rem; font-size: .8rem; }
+.discovery-strip .card { transition: border-color var(--t); }
+.discovery-strip .card-rating { backdrop-filter: none; }
+.admin-key-row { display: flex; align-items: center; gap: .75rem; margin: 1rem 0; }
+.admin-key-row input { max-width: 32rem; }
+.delivery-error { display: block; white-space: normal; max-width: 20rem; color: var(--danger); margin-top: .4rem; }
+@media (hover: none) {
+  .card:hover { transform: none; box-shadow: none; }
+  .card:hover .card-poster img { transform: none; }
+}
+@media (max-width: 480px) {
+  .discovery-strip .card { flex-basis: 145px; }
+  .admin-key-row { flex-wrap: wrap; }
+  .header-inner { gap: .5rem; }
+  .header-right { min-width: 0; gap: .4rem; }
+  .name-btn { min-width: 0; padding: .3rem; }
+  .name-btn > span { display: none; }
+  .name-avatar, .icon-btn { flex-shrink: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

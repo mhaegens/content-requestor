@@ -1,3 +1,5 @@
+> Historical original requirements. The current implementation supports Jellyfin library checks, Radarr/Sonarr approvals, and admin key protection for all management mutations. See [README.md](./README.md#approval-and-library-automation) for current behavior and setup.
+
 # Product Requirements Document
 
 ## Content Requestor — Jellyfin Media Request Web App

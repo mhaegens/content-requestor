@@ -6,9 +6,13 @@ node_modules/
 out/
 
 # Environment — NEVER commit secrets
-.env
-.env.local
-.env.*.local
+.env*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
 
 # SQLite database
 data/
@@ -25,3 +29,7 @@ tsconfig.tsbuildinfo
 .idea/
 *.swp
 *.swo
+
+# Browser test output
+playwright-report/
+test-results/

@@ -97,7 +97,7 @@ export function WishlistPage() {
             </h3>
             <p>
               {filter === 'available'
-                ? 'The admin will mark content as available once it has been added to Jellyfin.'
+                ? 'Titles appear here after they are found in Jellyfin or marked available by the admin.'
                 : 'Head to the search page to add something!'}
             </p>
           </div>

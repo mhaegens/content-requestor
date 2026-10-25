@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { deleteRequest, setJellyfinAvailable } from '@/lib/db';
+import { deleteRequest, setJellyfinAvailable, getRequest } from '@/lib/db';
+import { requireAdmin } from '@/lib/admin';
 
 export const runtime = 'nodejs';
 
@@ -8,6 +9,8 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: { id: string } },
 ) {
+  const denied = requireAdmin(_req);
+  if (denied) return denied;
   const { id } = params;
 
   if (!id || typeof id !== 'string') {
@@ -17,6 +20,7 @@ export async function DELETE(
   try {
     const deleted = deleteRequest(id);
     if (!deleted) {
+      if (getRequest(id)) return NextResponse.json({ error: 'This request is being sent. Retry after it finishes.' }, { status: 409 });
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     return NextResponse.json({ deleted: true });
@@ -31,6 +35,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
   const { id } = params;
 
   if (!id || typeof id !== 'string') {

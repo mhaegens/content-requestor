@@ -267,3 +267,13 @@ export async function getBelgianProviders(): Promise<WatchProvider[]> {
       display_priority: p.display_priority,
     }));
 }
+
+/** Sonarr uses TVDB IDs; resolve TMDB shows explicitly instead of guessing by title. */
+export async function getTvdbId(tmdbId: number): Promise<number> {
+  const { serviceJson, IntegrationError } = await import('./integration-http');
+  const result = await serviceJson<{ tvdb_id?: number }>('TMDB', `${BASE}/tv/${tmdbId}/external_ids`, headers());
+  if (!result.tvdb_id || !Number.isSafeInteger(result.tvdb_id)) {
+    throw new IntegrationError('This TV show has no TVDB ID in TMDB and cannot be sent to Sonarr.');
+  }
+  return result.tvdb_id;
+}

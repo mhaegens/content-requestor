@@ -13,10 +13,20 @@ out
 data/
 
 # Dev/config files not needed at runtime
-.env
-.env.*
+.env*
 !.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
 *.md
 poc/
 .vscode/
 .idea/
+
+# Tests and generated browser artifacts are not part of the runtime image
+tests/
+test-results/
+playwright-report/
+playwright.config.ts

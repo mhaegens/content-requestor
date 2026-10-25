@@ -45,11 +45,11 @@ in Requestr. You need a personal API token.
    long string starting with `eyJ…`
 
    > The token is a JWT — a very long string that looks like:
-   > `eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI...` (200+ characters)
+   > `<your-tmdb-token>` (200+ characters)
 
 5. Paste it into your temporary text file and label it:
    ```
-   TMDB token: eyJhbGciOiJIUzI1NiJ9...
+   TMDB token: <your-tmdb-token>
    ```
 
 > **Security note:** This token is only ever stored in the `.env` file on your
@@ -332,7 +332,7 @@ TMDB_READ_TOKEN=YOUR_TMDB_READ_ACCESS_TOKEN_HERE
 Replace the placeholder with your real token:
 
 ```env
-TMDB_READ_TOKEN=eyJhbGciOiJIUzI1NiJ9...your full TMDB token here...
+TMDB_READ_TOKEN=<your-tmdb-token>
 ```
 
 **How to save and exit nano:**
@@ -343,11 +343,10 @@ TMDB_READ_TOKEN=eyJhbGciOiJIUzI1NiJ9...your full TMDB token here...
 Verify the file was saved correctly:
 
 ```bash
-cat .env
+test -s .env && echo 'Environment file exists (contents hidden)'
 ```
 
-You should see your token printed back. If you still see `YOUR_TMDB_...`,
-run `nano .env` again and repeat.
+Re-open `.env` privately to confirm you replaced the placeholder. Do not paste secrets into GitHub issues, screenshots or logs.
 
 > **Never commit `.env` to git.** It is already listed in `.gitignore`.
 
@@ -587,8 +586,8 @@ their avatar in the top-right corner.
 
 ### Admin panel (`/masterview`)
 
-This page is intentionally not linked from anywhere — only people who know
-the URL can reach it.
+Admin changes require the `ADMIN_API_KEY` from your server environment. Enter it on this page.
+See [Approval and library automation](./README.md#approval-and-library-automation) for Jellyfin, Radarr and Sonarr configuration.
 
 - **Copy ID** — copies that item's TMDB numeric ID to clipboard.
 - **Copy All IDs** — copies all pending TMDB IDs as a newline-separated list
@@ -596,7 +595,7 @@ the URL can reach it.
 - **Trash icon** — deletes a single request.
 - **Clear All** — deletes everything (requires a confirmation click).
 
-Typical workflow: open `/masterview` → Copy All IDs → add to Jellyfin → Clear All.
+Automation workflow: open `/masterview` → enter admin key → Approve → Radarr/Sonarr searches and imports → Jellyfin availability appears after its library updates. Manual ID copying remains available.
 
 ---
 
@@ -642,7 +641,7 @@ sqlite3 /opt/content-requestor/data/requests.db \
 | Public exposure | Cloudflare Tunnel — **no open inbound ports** on your router |
 | LAN exposure | Port 3000 is reachable on the internal LAN (required for the tunnel); not accessible from the internet without going through Cloudflare |
 | Container privileges | Non-root user (uid 1001), all Linux capabilities dropped, read-only root filesystem |
-| Admin panel (`/masterview`) | Obscure URL — not linked from any public page |
+| Admin panel (`/masterview`) | Changes require the server’s `ADMIN_API_KEY`; public requests do not |
 | XSS / injection | React escaping + Content-Security-Policy headers block external scripts |
 
 > **Optional extra:** Add a Cloudflare Access policy (free tier) on the
@@ -659,7 +658,7 @@ sqlite3 /opt/content-requestor/data/requests.db \
 | `docker: command not found` | Re-run all commands in Step 4 from the beginning |
 | Build fails: `no space left on device` | Run `df -h` inside CT 180 — if `/` is full, expand in Proxmox: CT 180 → Resources → Disk → Resize |
 | App container exits immediately | Run `docker compose logs app` inside CT 180 — the error will be there |
-| `TMDB_READ_TOKEN is not set` error | Run `cat /opt/content-requestor/.env` — confirm the token is present |
+| `TMDB_READ_TOKEN is not set` error | Edit `/opt/content-requestor/.env` privately and confirm the token is set |
 | TMDB search returns no results | Token is wrong or expired — re-copy from <https://www.themoviedb.org/settings/api> |
 | `requests.haegens.be` shows a Cloudflare error | Check `systemctl status cloudflared` on `pve-homelab`; check the ingress rule is present and the IP is correct |
 | cloudflared fails to restart | Check for YAML syntax errors in `/etc/cloudflared/config.yml` — indentation must use spaces, not tabs |

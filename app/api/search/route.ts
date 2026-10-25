@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchTMDB } from '@/lib/tmdb';
 import type { MediaType } from '@/types';
+import { withAvailability } from '@/lib/jellyfin';
 
 export const runtime = 'nodejs';
 
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const results = await searchTMDB(query, type);
-    return NextResponse.json({ results });
+    return NextResponse.json({ results: await withAvailability(results) });
   } catch (err) {
     console.error('[/api/search]', err);
     return NextResponse.json(
